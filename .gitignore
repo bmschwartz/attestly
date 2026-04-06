@@ -46,3 +46,7 @@ yarn-error.log*
 
 # idea files
 .idea
+
+# superpowers brainstorm artifacts
+.superpowers/
+docs/superpowers/specs/reviews
