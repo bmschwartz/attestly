@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api } from "~/trpc/react";
-import type { SubscriptionPlan } from "~/generated/prisma";
+import type { SubscriptionPlan } from "../../../generated/prisma";
 
 const PLAN_OPTIONS: SubscriptionPlan[] = ["FREE", "PREMIUM", "ENTERPRISE"];
 

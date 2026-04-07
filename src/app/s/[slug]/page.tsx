@@ -1,7 +1,8 @@
 import { api } from "~/trpc/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { FREE_TIER_LIMITS, isPremium } from "~/lib/premium";
+import { FREE_TIER_LIMITS } from "~/lib/premium";
+import type { SubscriptionPlan, SubscriptionStatus } from "../../../../generated/prisma";
 
 export default async function SurveyLandingPage({
   params,
@@ -26,9 +27,8 @@ export default async function SurveyLandingPage({
   const responseCount = survey._count?.responses ?? 0;
 
   // Check if free-tier response limit is reached
-  const creatorPremium = isPremium(
-    (survey.creator as { subscription?: { plan: string; status: string } | null }).subscription ?? null,
-  );
+  const creatorSub = (survey.creator as { subscription?: { plan: SubscriptionPlan; status: SubscriptionStatus } | null }).subscription;
+  const creatorPremium = creatorSub != null && creatorSub.plan !== "FREE" && creatorSub.status === "ACTIVE";
   const isResponseLimitReached =
     !creatorPremium && responseCount >= FREE_TIER_LIMITS.maxResponsesPerSurvey;
 

@@ -1,4 +1,4 @@
-import type { SubscriptionPlan, SubscriptionStatus } from "~/generated/prisma";
+import type { SubscriptionPlan, SubscriptionStatus } from "../../generated/prisma";
 
 /**
  * Downgrade behavior:
