@@ -49,7 +49,7 @@ export function useAutoSave(builder: BuilderReturn) {
       if (question) {
         promises.push(
           questionUpsertMutation.mutateAsync({
-            id: question.id,
+            questionId: question.id,
             surveyId: question.id, // Will be wired to actual survey ID
             text: question.text,
             questionType: question.questionType,
@@ -68,7 +68,7 @@ export function useAutoSave(builder: BuilderReturn) {
     const currentIds = new Set(builder.questions.map((q) => q.id));
     for (const prevId of prevQuestionIdsRef.current) {
       if (!currentIds.has(prevId)) {
-        promises.push(questionDeleteMutation.mutateAsync({ id: prevId }));
+        promises.push(questionDeleteMutation.mutateAsync({ questionId: prevId }));
       }
     }
 
