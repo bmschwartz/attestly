@@ -165,4 +165,120 @@ export const responseRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  getConfirmation: protectedProcedure
+    .input(z.object({ slug: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.userId;
+
+      const survey = await ctx.db.survey.findUnique({
+        where: { slug: input.slug },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          closedAt: true,
+          resultsVisibility: true,
+        },
+      });
+
+      if (!survey) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Survey not found",
+        });
+      }
+
+      const response = await ctx.db.response.findFirst({
+        where: {
+          surveyId: survey.id,
+          respondentId: userId,
+          status: "SUBMITTED",
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          submittedAt: true,
+          blindedId: true,
+          ipfsCid: true,
+          submitTxHash: true,
+          verificationStatus: true,
+        },
+      });
+
+      if (!response) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No submitted response found for this survey",
+        });
+      }
+
+      const user = await ctx.db.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+
+      return {
+        survey: {
+          title: survey.title,
+          status: survey.status,
+          closedAt: survey.closedAt,
+          resultsVisibility: survey.resultsVisibility,
+        },
+        response: {
+          id: response.id,
+          submittedAt: response.submittedAt,
+          blindedId: response.blindedId,
+          ipfsCid: response.ipfsCid,
+          submitTxHash: response.submitTxHash,
+          verificationStatus: response.verificationStatus,
+        },
+        respondentEmail: user?.email ?? null,
+      };
+    }),
+
+  listMine: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.userId;
+
+    const responses = await ctx.db.response.findMany({
+      where: {
+        respondentId: userId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        status: true,
+        submittedAt: true,
+        blindedId: true,
+        createdAt: true,
+        survey: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            status: true,
+            closedAt: true,
+            resultsVisibility: true,
+          },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    return responses.map((r) => ({
+      id: r.id,
+      status: r.status,
+      submittedAt: r.submittedAt,
+      blindedId: r.blindedId,
+      createdAt: r.createdAt,
+      survey: {
+        id: r.survey.id,
+        title: r.survey.title,
+        slug: r.survey.slug,
+        status: r.survey.status,
+        closedAt: r.survey.closedAt,
+        resultsVisibility: r.survey.resultsVisibility,
+      },
+    }));
+  }),
 });
