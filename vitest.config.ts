@@ -6,6 +6,9 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["src/**/__tests__/**/*.test.ts"],
+    env: {
+      SKIP_ENV_VALIDATION: "1",
+    },
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
@@ -15,6 +18,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "~": path.resolve(__dirname, "./src"),
+      "server-only": path.resolve(__dirname, "./src/__mocks__/server-only.ts"),
     },
   },
 });
