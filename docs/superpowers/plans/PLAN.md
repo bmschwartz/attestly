@@ -94,4 +94,4 @@ Each sub-plan is designed for **subagent-driven development**:
 3. Code quality review after spec passes
 4. Commit after both reviews pass
 
-Total estimated effort: ~20-25 agent sessions across all 18 sub-plans.
+Total estimated effort: ~20-25 agent sessions across all 19 sub-plans. Execute sequentially — no manual code changes between plans.
