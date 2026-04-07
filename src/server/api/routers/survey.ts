@@ -200,6 +200,7 @@ export const surveyRouter = createTRPCRouter({
               displayName: true,
               avatar: true,
               walletAddress: true,
+              subscription: { select: { plan: true, status: true } },
             },
           },
           _count: {
