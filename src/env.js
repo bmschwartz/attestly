@@ -9,6 +9,7 @@ export const env = createEnv({
   server: {
     DATABASE_URL: z.string().url(),
     PRIVY_APP_SECRET: z.string(),
+    RESEND_API_KEY: z.string().min(1),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -30,6 +31,7 @@ export const env = createEnv({
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
     PRIVY_APP_SECRET: process.env.PRIVY_APP_SECRET,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
     NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
     NODE_ENV: process.env.NODE_ENV,
   },
