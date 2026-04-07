@@ -7,6 +7,7 @@ import { api } from "~/trpc/react";
 import type { QuestionDraft, ValidationError } from "../_lib/validation";
 import { validateSurveyForPublish } from "../_lib/validation";
 import { LIMITS } from "../_lib/constants";
+import { usePremium } from "~/hooks/use-premium";
 
 type SurveyForEdit = NonNullable<RouterOutputs["survey"]["getForEdit"]>;
 
@@ -55,7 +56,7 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
     [],
   );
 
-  const [isPremium] = useState(false); // Will be wired to subscription check
+  const { isPremium } = usePremium();
 
   // Track dirty state for auto-save
   const [surveyDirty, setSurveyDirty] = useState(false);
