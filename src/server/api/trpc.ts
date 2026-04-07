@@ -102,12 +102,39 @@ const authMiddleware = t.middleware(async ({ ctx, next }) => {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid auth token" });
   }
 
-  // Fetch full user from Privy to get email and wallet address.
+  // Check if user already exists in local DB — skip Privy API call if so.
+  const existingUser = await ctx.db.user.findUnique({
+    where: { privyId: privyUserId },
+    select: { id: true, walletAddress: true },
+  });
+
+  if (existingUser && existingUser.walletAddress !== "pending") {
+    // User exists with real wallet — skip Privy API call.
+    return next({
+      ctx: {
+        ...ctx,
+        userId: existingUser.id,
+        walletAddress: existingUser.walletAddress,
+      },
+    });
+  }
+
+  // First login or wallet not yet linked — fetch from Privy.
   let privyUser;
   try {
     privyUser = await privy.getUser(privyUserId);
   } catch {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Could not fetch Privy user" });
+    // If Privy API fails but user exists locally, use local data.
+    if (existingUser) {
+      return next({
+        ctx: {
+          ...ctx,
+          userId: existingUser.id,
+          walletAddress: existingUser.walletAddress,
+        },
+      });
+    }
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Could not verify user" });
   }
 
   const walletAddress = privyUser.wallet?.address ?? null;
@@ -122,7 +149,7 @@ const authMiddleware = t.middleware(async ({ ctx, next }) => {
     },
     create: {
       privyId: privyUserId,
-      walletAddress: walletAddress ?? `privy:${privyUserId}`,
+      walletAddress: walletAddress ?? "pending",
       email,
       subscription: {
         create: {

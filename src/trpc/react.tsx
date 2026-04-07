@@ -38,12 +38,43 @@ export type RouterInputs = inferRouterInputs<AppRouter>;
  */
 export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
-function getPrivyToken(): string | null {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith("privy-token="));
-  return match ? (match.split("=")[1] ?? null) : null;
+/**
+ * Get Privy auth token. Privy stores tokens internally —
+ * we read from the privy-token cookie which Privy sets when configured.
+ * If not available, fall back to trying localStorage.
+ */
+async function getPrivyToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+
+  // Try localStorage where Privy stores the token
+  try {
+    const keys = Object.keys(localStorage);
+    const privyKey = keys.find((k) => k.startsWith("privy:"));
+    if (privyKey) {
+      const data = localStorage.getItem(privyKey);
+      if (data) {
+        const parsed = JSON.parse(data) as { token?: string };
+        if (parsed?.token) return parsed.token;
+      }
+    }
+  } catch {
+    // localStorage not available or parse error
+  }
+
+  // Fallback: try cookie (handles SSR cookie forwarding)
+  try {
+    const cookieStr = document.cookie;
+    const match = cookieStr
+      .split("; ")
+      .find((row) => row.startsWith("privy-token="));
+    if (match) {
+      return match.substring("privy-token=".length);
+    }
+  } catch {
+    // cookie not available
+  }
+
+  return null;
 }
 
 export function TRPCReactProvider(props: { children: React.ReactNode }) {
@@ -60,10 +91,10 @@ export function TRPCReactProvider(props: { children: React.ReactNode }) {
         httpBatchStreamLink({
           transformer: SuperJSON,
           url: getBaseUrl() + "/api/trpc",
-          headers: () => {
+          async headers() {
             const headers = new Headers();
             headers.set("x-trpc-source", "nextjs-react");
-            const token = getPrivyToken();
+            const token = await getPrivyToken();
             if (token) {
               headers.set("Authorization", `Bearer ${token}`);
             }

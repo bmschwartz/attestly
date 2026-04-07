@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
@@ -19,7 +20,7 @@ function slugify(text: string): string {
 }
 
 function randomSuffix(): string {
-  return Math.random().toString(36).slice(2, 6);
+  return randomBytes(4).toString("hex"); // 8 hex chars = 4 billion combinations
 }
 
 const VALID_CATEGORIES = [
@@ -56,17 +57,33 @@ export const surveyRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const baseTitle = input.title?.trim() ?? "Untitled Survey";
-      const slug = `${slugify(baseTitle)}-${randomSuffix()}`;
 
-      const survey = await ctx.db.survey.create({
-        data: {
-          title: baseTitle,
-          description: "",
-          slug,
-          status: "DRAFT",
-          creator: { connect: { id: ctx.userId } },
-        },
-      });
+      let survey;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const slug = `${slugify(baseTitle)}-${randomSuffix()}`;
+        try {
+          survey = await ctx.db.survey.create({
+            data: {
+              title: baseTitle,
+              description: "",
+              slug,
+              status: "DRAFT",
+              creator: { connect: { id: ctx.userId } },
+            },
+          });
+          break;
+        } catch (e: unknown) {
+          const prismaErr = e as { code?: string };
+          if (prismaErr?.code === "P2002" && attempt < 2) continue; // Unique constraint, retry
+          throw e;
+        }
+      }
+      if (!survey) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Could not generate unique slug",
+        });
+      }
 
       return survey;
     }),
@@ -202,6 +219,11 @@ export const surveyRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
 
+      // Note: getBySlug intentionally returns all survey data for non-DRAFT surveys,
+      // including private and invite-only surveys. The landing page must be visible
+      // so users can see what the survey is about before authenticating.
+      // Access control for responding is enforced in response.start.
+      // Response data privacy (encryption) is a separate concern handled in Phase 3.
       return survey;
     }),
 
@@ -211,188 +233,190 @@ export const surveyRouter = createTRPCRouter({
   publish: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const survey = await ctx.db.survey.findUnique({
-        where: { id: input.id },
-        include: { questions: { orderBy: { position: "asc" } } },
-      });
+      return ctx.db.$transaction(async (tx) => {
+        const survey = await tx.survey.findUnique({
+          where: { id: input.id },
+          include: { questions: { orderBy: { position: "asc" } } },
+        });
 
-      if (!survey) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
-      }
-      if (survey.creatorId !== ctx.userId) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Not the survey owner",
-        });
-      }
-      if (survey.status !== "DRAFT") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Only DRAFT surveys can be published",
-        });
-      }
-
-      // --- Validate title ---
-      if (!survey.title || survey.title.trim().length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Title is required",
-        });
-      }
-      if (survey.title.length > 200) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Title must be 200 characters or fewer",
-        });
-      }
-
-      // --- Validate description ---
-      if (!survey.description || survey.description.trim().length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Description is required",
-        });
-      }
-      if (survey.description.length > 2000) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Description must be 2000 characters or fewer",
-        });
-      }
-
-      // --- Validate questions count ---
-      const questions = survey.questions;
-      if (questions.length < 1) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Survey must have at least 1 question",
-        });
-      }
-      if (questions.length > 100) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Survey can have at most 100 questions",
-        });
-      }
-
-      // --- Validate categories ---
-      const categories = Array.isArray(survey.categories)
-        ? (survey.categories as string[])
-        : [];
-      if (categories.length < 1) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Survey must have at least 1 category",
-        });
-      }
-      if (categories.length > 5) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Survey can have at most 5 categories",
-        });
-      }
-
-      // --- Validate tags ---
-      const tags = Array.isArray(survey.tags) ? (survey.tags as string[]) : [];
-      if (tags.length > 10) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Survey can have at most 10 tags",
-        });
-      }
-
-      // --- Validate slug uniqueness ---
-      const existingWithSlug = await ctx.db.survey.findFirst({
-        where: { slug: survey.slug, id: { not: survey.id } },
-        select: { id: true },
-      });
-      if (existingWithSlug) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Slug is already taken",
-        });
-      }
-
-      // --- Per-question validations ---
-      const SELECT_TYPES = ["SINGLE_SELECT", "MULTIPLE_CHOICE"];
-      for (const q of questions) {
-        if (!q.text || q.text.trim().length === 0) {
+        if (!survey) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+        }
+        if (survey.creatorId !== ctx.userId) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Not the survey owner",
+          });
+        }
+        if (survey.status !== "DRAFT") {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `Question ${q.position} text is required`,
+            message: "Only DRAFT surveys can be published",
           });
         }
 
-        if (SELECT_TYPES.includes(q.questionType)) {
-          const options = Array.isArray(q.options)
-            ? (q.options as string[])
-            : [];
-          if (options.length < 2) {
+        // --- Validate title ---
+        if (!survey.title || survey.title.trim().length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Title is required",
+          });
+        }
+        if (survey.title.length > 200) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Title must be 200 characters or fewer",
+          });
+        }
+
+        // --- Validate description ---
+        if (!survey.description || survey.description.trim().length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Description is required",
+          });
+        }
+        if (survey.description.length > 2000) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Description must be 2000 characters or fewer",
+          });
+        }
+
+        // --- Validate questions count ---
+        const questions = survey.questions;
+        if (questions.length < 1) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Survey must have at least 1 question",
+          });
+        }
+        if (questions.length > 100) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Survey can have at most 100 questions",
+          });
+        }
+
+        // --- Validate categories ---
+        const categories = Array.isArray(survey.categories)
+          ? (survey.categories as string[])
+          : [];
+        if (categories.length < 1) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Survey must have at least 1 category",
+          });
+        }
+        if (categories.length > 5) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Survey can have at most 5 categories",
+          });
+        }
+
+        // --- Validate tags ---
+        const tags = Array.isArray(survey.tags) ? (survey.tags as string[]) : [];
+        if (tags.length > 10) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Survey can have at most 10 tags",
+          });
+        }
+
+        // --- Validate slug uniqueness ---
+        const existingWithSlug = await tx.survey.findFirst({
+          where: { slug: survey.slug, id: { not: survey.id } },
+          select: { id: true },
+        });
+        if (existingWithSlug) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Slug is already taken",
+          });
+        }
+
+        // --- Per-question validations ---
+        const SELECT_TYPES = ["SINGLE_SELECT", "MULTIPLE_CHOICE"];
+        for (const q of questions) {
+          if (!q.text || q.text.trim().length === 0) {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Question ${q.position} must have at least 2 options`,
+              message: `Question ${q.position} text is required`,
             });
           }
-          // No duplicate options
-          const unique = new Set(options.map((o) => o.trim()));
-          if (unique.size !== options.length) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Question ${q.position} has duplicate options`,
-            });
-          }
-          // No empty options
-          for (const opt of options) {
-            if (!opt || opt.trim().length === 0) {
+
+          if (SELECT_TYPES.includes(q.questionType)) {
+            const options = Array.isArray(q.options)
+              ? (q.options as string[])
+              : [];
+            if (options.length < 2) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Question ${q.position} has an empty option`,
+                message: `Question ${q.position} must have at least 2 options`,
+              });
+            }
+            // No duplicate options
+            const unique = new Set(options.map((o) => o.trim()));
+            if (unique.size !== options.length) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Question ${q.position} has duplicate options`,
+              });
+            }
+            // No empty options
+            for (const opt of options) {
+              if (!opt || opt.trim().length === 0) {
+                throw new TRPCError({
+                  code: "BAD_REQUEST",
+                  message: `Question ${q.position} has an empty option`,
+                });
+              }
+            }
+          }
+
+          if (q.questionType === "RATING") {
+            if (q.minRating === null || q.maxRating === null) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Question ${q.position} rating must have min and max`,
+              });
+            }
+            if (q.minRating >= q.maxRating) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Question ${q.position} rating min must be less than max`,
+              });
+            }
+          }
+
+          if (q.questionType === "FREE_TEXT") {
+            if (q.maxLength === null || q.maxLength === undefined) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Question ${q.position} free text must have a maxLength`,
+              });
+            }
+            if (q.maxLength <= 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Question ${q.position} free text maxLength must be greater than 0`,
               });
             }
           }
         }
 
-        if (q.questionType === "RATING") {
-          if (q.minRating === null || q.maxRating === null) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Question ${q.position} rating must have min and max`,
-            });
-          }
-          if (q.minRating >= q.maxRating) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Question ${q.position} rating min must be less than max`,
-            });
-          }
-        }
+        // --- Transition to PUBLISHED ---
+        const published = await tx.survey.update({
+          where: { id: input.id },
+          data: {
+            status: "PUBLISHED",
+            publishedAt: new Date(),
+          },
+        });
 
-        if (q.questionType === "FREE_TEXT") {
-          if (q.maxLength === null || q.maxLength === undefined) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Question ${q.position} free text must have a maxLength`,
-            });
-          }
-          if (q.maxLength <= 0) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Question ${q.position} free text maxLength must be greater than 0`,
-            });
-          }
-        }
-      }
-
-      // --- Transition to PUBLISHED ---
-      const published = await ctx.db.survey.update({
-        where: { id: input.id },
-        data: {
-          status: "PUBLISHED",
-          publishedAt: new Date(),
-        },
+        return published;
       });
-
-      return published;
     }),
 
   /**
