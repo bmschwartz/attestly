@@ -1,11 +1,310 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
-    provider = "prisma-client-js"
-    output   = "../generated/prisma"
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
 }
 
 datasource db {
-    provider = "postgresql"
+  provider = "postgresql"
+}
+
+enum SurveyStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum QuestionType {
+  SINGLE_SELECT
+  MULTIPLE_CHOICE
+  RATING
+  FREE_TEXT
+}
+
+enum ResponseStatus {
+  IN_PROGRESS
+  SUBMITTED
+}
+
+enum AccessMode {
+  OPEN
+  INVITE_ONLY
+}
+
+enum ResultsVisibility {
+  PUBLIC
+  RESPONDENTS
+  CREATOR
+}
+
+enum InviteType {
+  EMAIL
+  DOMAIN
+}
+
+enum SubscriptionPlan {
+  FREE
+  PREMIUM
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  EXPIRED
+}
+
+enum JobType {
+  PUBLISH_SURVEY
+  SUBMIT_RESPONSE
+  CLOSE_SURVEY
+  VERIFY_RESPONSES
+  SEND_EMAIL
+  GENERATE_AI_SUMMARY
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum PayoutStatus {
+  NONE
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  PAID
+  PAYOUT_FAILED
+}
+
+enum VerificationStatus {
+  NONE
+  PENDING
+  SUBMITTED
+  VERIFIED
+  FAILED
+}
+
+model User {
+  id            String   @id @default(uuid())
+  privyId       String   @unique
+  walletAddress String   @unique
+  email         String?
+  displayName   String?  @db.VarChar(50)
+  avatar        String?
+  bio           String?  @db.VarChar(200)
+  isAdmin       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  subscription Subscription?
+  surveys      Survey[]
+  responses    Response[]
+  chatSessions ChatSession[]
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  userId               String             @unique
+  plan                 SubscriptionPlan   @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Survey {
+  id                 String             @id @default(uuid())
+  creatorId          String
+  title              String
+  description        String
+  slug               String             @unique
+  isPrivate          Boolean            @default(false)
+  accessMode         AccessMode         @default(OPEN)
+  resultsVisibility  ResultsVisibility  @default(PUBLIC)
+  status             SurveyStatus       @default(DRAFT)
+  publishedAt        DateTime?
+  closedAt           DateTime?
+  contentHash        String?
+  ipfsCid            String?
+  publishTxHash      String?
+  closeTxHash        String?
+  verificationStatus VerificationStatus @default(NONE)
+  categories         Json               @default("[]")
+  tags               Json               @default("[]")
+  featuredAt         DateTime?
+  featuredOrder      Int?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  creator        User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  questions      Question[]
+  responses      Response[]
+  invites        SurveyInvite[]
+  encryptionKey  EncryptionKey?
+  bounty         SurveyBounty?
+  aiSummaries    AiSummary[]
+  chatSessions   ChatSession[]
+  backgroundJobs BackgroundJob[] @relation("SurveyJobs")
+
+  @@index([creatorId])
+  @@index([status])
+}
+
+model Question {
+  id           String       @id @default(uuid())
+  surveyId     String
+  text         String
+  questionType QuestionType
+  position     Int
+  required     Boolean      @default(false)
+  options      Json         @default("[]")
+  minRating    Int?
+  maxRating    Int?
+  maxLength    Int?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  survey      Survey      @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  answers     Answer[]
+  aiSummaries AiSummary[]
+
+  @@unique([surveyId, position])
+}
+
+model Response {
+  id                 String             @id @default(uuid())
+  surveyId           String
+  respondentId       String
+  status             ResponseStatus     @default(IN_PROGRESS)
+  submittedAt        DateTime?
+  blindedId          String?
+  ipfsCid            String?
+  submitTxHash       String?
+  verificationStatus VerificationStatus @default(NONE)
+  encryptionIv       String?
+  payoutStatus       PayoutStatus       @default(NONE)
+  payoutAmount       Decimal?
+  payoutTxHash       String?
+  payoutApprovedAt   DateTime?
+  deviceFingerprint  String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  deletedAt          DateTime?
+
+  survey         Survey          @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  respondent     User            @relation(fields: [respondentId], references: [id], onDelete: Cascade)
+  answers        Answer[]
+  backgroundJobs BackgroundJob[] @relation("ResponseJobs")
+
+  @@unique([surveyId, respondentId], map: "Response_surveyId_respondentId_key")
+  @@index([surveyId])
+}
+
+model Answer {
+  id            String       @id @default(uuid())
+  responseId    String
+  questionId    String
+  questionIndex Int
+  questionType  QuestionType
+  value         String
+
+  response Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([responseId, questionId])
+  @@index([questionId])
+}
+
+model SurveyInvite {
+  id        String     @id @default(uuid())
+  surveyId  String
+  type      InviteType
+  value     String
+  invitedAt DateTime   @default(now())
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, type, value])
+  @@index([surveyId])
+}
+
+model EncryptionKey {
+  id           String   @id @default(uuid())
+  surveyId     String   @unique
+  encryptedKey String
+  createdAt    DateTime @default(now())
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+}
+
+model ChatSession {
+  id        String   @id @default(uuid())
+  userId    String
+  surveyId  String?
+  surveyIds Json?
+  title     String
+  messages  Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  survey Survey? @relation(fields: [surveyId], references: [id], onDelete: SetNull)
+}
+
+model AiSummary {
+  id          String   @id @default(uuid())
+  surveyId    String
+  questionId  String?
+  content     String
+  focusPrompt String?
+  generatedAt DateTime @default(now())
+
+  survey   Survey    @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  question Question? @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, questionId])
+  @@index([surveyId])
+}
+
+model BackgroundJob {
+  id              String    @id @default(uuid())
+  type            JobType
+  status          JobStatus @default(PENDING)
+  surveyId        String?
+  responseId      String?
+  payload         Json      @default("{}")
+  retryCount      Int       @default(0)
+  lastAttemptedAt DateTime?
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  survey   Survey?   @relation("SurveyJobs", fields: [surveyId], references: [id], onDelete: SetNull)
+  response Response? @relation("ResponseJobs", fields: [responseId], references: [id], onDelete: SetNull)
+
+  @@index([status, type])
+  @@index([surveyId])
+}
+
+model SurveyBounty {
+  id                 String   @id @default(uuid())
+  surveyId           String   @unique
+  totalAmount        Decimal
+  perResponse        Decimal
+  maxResponses       Int
+  remainingResponses Int
+  escrowTxHash       String?
+  currency           String   @default("USDC")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 }
