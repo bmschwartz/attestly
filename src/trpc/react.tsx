@@ -38,6 +38,14 @@ export type RouterInputs = inferRouterInputs<AppRouter>;
  */
 export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
+function getPrivyToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith("privy-token="));
+  return match ? (match.split("=")[1] ?? null) : null;
+}
+
 export function TRPCReactProvider(props: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
 
@@ -55,6 +63,10 @@ export function TRPCReactProvider(props: { children: React.ReactNode }) {
           headers: () => {
             const headers = new Headers();
             headers.set("x-trpc-source", "nextjs-react");
+            const token = getPrivyToken();
+            if (token) {
+              headers.set("Authorization", `Bearer ${token}`);
+            }
             return headers;
           },
         }),

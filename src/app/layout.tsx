@@ -1,9 +1,8 @@
 import "~/styles/globals.css";
-
 import { type Metadata } from "next";
 import { Geist } from "next/font/google";
-
 import { TRPCReactProvider } from "~/trpc/react";
+import { PrivyProvider } from "~/app/_components/providers/privy-provider";
 
 export const metadata: Metadata = {
   title: "Attestly",
@@ -22,7 +21,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geist.variable}`}>
       <body>
-        <TRPCReactProvider>{children}</TRPCReactProvider>
+        <PrivyProvider>
+          <TRPCReactProvider>{children}</TRPCReactProvider>
+        </PrivyProvider>
       </body>
     </html>
   );

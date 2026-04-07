@@ -21,8 +21,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.11.1",
     "@prisma/client": "^7.6.0",
+    "@privy-io/react-auth": "^3.19.0",
+    "@privy-io/server-auth": "^1.32.5",
     "@t3-oss/env-nextjs": "^0.13.11",
     "@tanstack/react-query": "^5.96.2",
     "@trpc/client": "^11.16.0",
@@ -30,7 +31,6 @@
     "@trpc/server": "^11.16.0",
     "dotenv": "^17.4.0",
     "next": "^16.2.2",
-    "next-auth": "5.0.0-beta.30",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "server-only": "^0.0.1",
