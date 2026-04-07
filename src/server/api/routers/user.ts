@@ -80,4 +80,20 @@ export const userRouter = createTRPCRouter({
       select: { plan: true, status: true, currentPeriodEnd: true },
     });
   }),
+
+  /** Get the authenticated user's own profile (for settings page). */
+  getMe: protectedProcedure.query(async ({ ctx }) => {
+    return ctx.db.user.findUnique({
+      where: { id: ctx.userId },
+      select: {
+        id: true,
+        displayName: true,
+        avatar: true,
+        bio: true,
+        email: true,
+        walletAddress: true,
+        createdAt: true,
+      },
+    });
+  }),
 });

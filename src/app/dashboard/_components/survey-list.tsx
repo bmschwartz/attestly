@@ -76,7 +76,9 @@ export function SurveyList() {
             </div>
           ) : (
             <div className="py-12 text-center text-sm text-gray-500">
-              No surveys match the current filter.
+              {statusFilter === "ALL"
+                ? "No surveys yet."
+                : `No ${statusFilter.toLowerCase()} surveys.`}
             </div>
           )}
         </>
