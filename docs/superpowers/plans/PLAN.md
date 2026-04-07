@@ -6,7 +6,7 @@
 
 Phase 1 implements the full survey platform: auth, data model, survey builder, respondent flow, results, dashboard, marketplace, AI insights, and premium gating. No blockchain, IPFS, or encryption — those are Phase 2-4.
 
-18 sub-plans, each completable in a single agent session. Build in order — each depends on its predecessors.
+19 sub-plans, each completable in a single agent session. Build in order — each depends on its predecessors.
 
 ## Dependency Graph
 
@@ -18,7 +18,8 @@ Phase 1 implements the full survey platform: auth, data model, survey builder, r
 1c App Shell
     ├→ 2a Survey CRUD
     │   ├→ 2b Question CRUD
-    │   │   ├→ 2c Survey Builder UI
+    │   │   ├→ 2c-1 Builder Shell & Publish
+    │   │   │   └→ 2c-2 Builder Questions & Preview
     │   │   └→ 2d Survey Landing & Response Form
     │   │       └→ 2e Confirmation & My Responses
     │   ├→ 3a Results Aggregation API
@@ -49,7 +50,8 @@ Phase 1 implements the full survey platform: auth, data model, survey builder, r
 |---|------|------|-----------|
 | [2a](2026-04-06-2a-survey-crud.md) | **Survey CRUD** | tRPC routers: create, update, publish, delete, close, list | `src/server/api/routers/survey.ts` |
 | [2b](2026-04-06-2b-question-crud.md) | **Question CRUD** | tRPC routers: upsert, delete with reindex, reorder | `src/server/api/routers/question.ts` |
-| [2c](2026-04-06-2c-survey-builder-ui.md) | **Survey Builder UI** | Split-pane editor, question cards, auto-save, publish flow | `src/app/surveys/[id]/edit/` |
+| [2c-1](2026-04-06-2c1-builder-shell.md) | **Builder Shell & Publish** | Page shell, hooks, header, footer, publish dialog, validation | `src/app/surveys/[id]/edit/` |
+| [2c-2](2026-04-06-2c2-builder-questions-preview.md) | **Builder Questions & Preview** | Metadata form, question cards, preview pane, final wiring | `src/app/surveys/[id]/edit/_components/` |
 | [2d](2026-04-06-2d-survey-response.md) | **Survey Landing & Response** | Landing page, response form, auto-save, submit | `src/app/s/[slug]/`, response router |
 | [2e](2026-04-06-2e-confirmation-my-responses.md) | **Confirmation & My Responses** | Post-submit page, response history | `src/app/s/[slug]/confirmation/`, `/my-responses` |
 

@@ -396,6 +396,7 @@ git commit -m "feat: add profile settings page and profile router"
 
 ```typescript
 import { z } from "zod";
+import { type PrismaClient } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 
