@@ -21,7 +21,8 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "worker": "tsx src/server/jobs/start-worker.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1025.0",
