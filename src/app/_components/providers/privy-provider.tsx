@@ -15,7 +15,9 @@ export function PrivyProvider({ children }: { children: React.ReactNode }) {
           logo: "/favicon.ico",
         },
         embeddedWallets: {
-          createOnLogin: "all-users",
+          ethereum: {
+            createOnLogin: "all-users",
+          },
         },
       }}
     >
