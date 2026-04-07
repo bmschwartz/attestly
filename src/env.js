@@ -10,6 +10,10 @@ export const env = createEnv({
     DATABASE_URL: z.string().url(),
     PRIVY_APP_SECRET: z.string(),
     RESEND_API_KEY: z.string().min(1),
+    CLOUDFLARE_R2_ACCOUNT_ID: z.string().min(1),
+    CLOUDFLARE_R2_ACCESS_KEY_ID: z.string().min(1),
+    CLOUDFLARE_R2_SECRET_ACCESS_KEY: z.string().min(1),
+    CLOUDFLARE_R2_BUCKET_NAME: z.string().min(1),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -32,6 +36,10 @@ export const env = createEnv({
     DATABASE_URL: process.env.DATABASE_URL,
     PRIVY_APP_SECRET: process.env.PRIVY_APP_SECRET,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
+    CLOUDFLARE_R2_ACCOUNT_ID: process.env.CLOUDFLARE_R2_ACCOUNT_ID,
+    CLOUDFLARE_R2_ACCESS_KEY_ID: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    CLOUDFLARE_R2_SECRET_ACCESS_KEY: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    CLOUDFLARE_R2_BUCKET_NAME: process.env.CLOUDFLARE_R2_BUCKET_NAME,
     NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
     NODE_ENV: process.env.NODE_ENV,
   },
