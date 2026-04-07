@@ -1,5 +1,5 @@
 import { generateText } from "./service";
-import type { Question, Answer } from "~/generated/prisma";
+import type { Question, Answer } from "../../../generated/prisma";
 
 interface SurveyContext {
   title: string;
@@ -23,7 +23,7 @@ export async function generateTopLevelSummary(
       ? { average: getAverage(q.answers), distribution: getDistribution(q.answers) }
       : {}),
     ...(q.questionType === "FREE_TEXT"
-      ? { sampleResponses: q.answers.slice(0, 50).map((a) => a.value) }
+      ? { sampleResponses: q.answers.slice(0, 50).map((a: Answer) => a.value) }
       : {}),
   }));
 
@@ -53,7 +53,7 @@ export async function generateFreeTextSummary(
   surveyTitle: string,
   focusPrompt?: string,
 ): Promise<string> {
-  const responses = question.answers.map((a) => a.value);
+  const responses = question.answers.map((a: Answer) => a.value);
 
   const prompt = `You are analyzing free-text responses to a survey question.
 
@@ -62,7 +62,7 @@ Question: "${question.text}"
 Total responses: ${responses.length}
 
 Responses:
-${responses.slice(0, 500).map((r, i) => `${i + 1}. ${r}`).join("\n")}
+${responses.slice(0, 500).map((r: string, i: number) => `${i + 1}. ${r}`).join("\n")}
 ${responses.length > 500 ? `\n... and ${responses.length - 500} more responses` : ""}
 
 ${focusPrompt ? `Focus your analysis on: ${focusPrompt}` : ""}
