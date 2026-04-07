@@ -7,6 +7,7 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
+import { canCreateSurvey } from "~/lib/premium";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,6 +40,19 @@ export const surveyRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const baseTitle = input.title?.trim() ?? "Untitled Survey";
+
+      // Free tier survey limit check
+      const [subscription, surveyCount] = await Promise.all([
+        ctx.db.subscription.findUnique({ where: { userId: ctx.userId } }),
+        ctx.db.survey.count({ where: { creatorId: ctx.userId } }),
+      ]);
+      const check = canCreateSurvey(
+        subscription ? { plan: subscription.plan, status: subscription.status } : null,
+        surveyCount,
+      );
+      if (!check.allowed) {
+        throw new TRPCError({ code: "FORBIDDEN", message: check.reason });
+      }
 
       let survey;
       for (let attempt = 0; attempt < 3; attempt++) {
