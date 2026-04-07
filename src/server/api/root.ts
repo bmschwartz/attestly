@@ -1,4 +1,5 @@
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
+import { aiRouter } from "~/server/api/routers/ai";
 import { exploreRouter } from "~/server/api/routers/explore";
 import { healthRouter } from "~/server/api/routers/health";
 import { inviteRouter } from "~/server/api/routers/invite";
@@ -16,6 +17,7 @@ import { adminRouter } from "~/server/api/routers/admin";
  * All routers added in /api/routers should be manually added here.
  */
 export const appRouter = createTRPCRouter({
+  ai: aiRouter,
   explore: exploreRouter,
   health: healthRouter,
   invite: inviteRouter,
