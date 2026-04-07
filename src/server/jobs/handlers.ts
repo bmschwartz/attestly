@@ -1,4 +1,5 @@
 import type { BackgroundJob } from "../../../generated/prisma";
+import { handleGenerateAiSummary } from "./handlers/generate-ai-summary";
 
 /**
  * A job handler function. Receives the full job record and performs
@@ -54,7 +55,11 @@ registerHandler("SUBMIT_RESPONSE", placeholderHandler("SUBMIT_RESPONSE"));
 registerHandler("CLOSE_SURVEY", placeholderHandler("CLOSE_SURVEY"));
 registerHandler("VERIFY_RESPONSES", placeholderHandler("VERIFY_RESPONSES"));
 registerHandler("SEND_EMAIL", placeholderHandler("SEND_EMAIL"));
-registerHandler(
-  "GENERATE_AI_SUMMARY",
-  placeholderHandler("GENERATE_AI_SUMMARY"),
-);
+registerHandler("GENERATE_AI_SUMMARY", async (job) => {
+  const payload = job.payload as {
+    surveyId: string;
+    focusPrompt?: string;
+    questionId?: string;
+  };
+  await handleGenerateAiSummary(payload);
+});

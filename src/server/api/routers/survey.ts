@@ -532,6 +532,20 @@ export const surveyRouter = createTRPCRouter({
         });
       });
 
+      // Queue AI summary generation if creator is premium
+      const subscription = await ctx.db.subscription.findUnique({
+        where: { userId: ctx.userId },
+      });
+      if (subscription && subscription.plan !== "FREE" && subscription.status === "ACTIVE") {
+        await ctx.db.backgroundJob.create({
+          data: {
+            type: "GENERATE_AI_SUMMARY",
+            surveyId: input.id,
+            payload: { surveyId: input.id },
+          },
+        });
+      }
+
       return closed;
     }),
 });
