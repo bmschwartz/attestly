@@ -7,11 +7,8 @@ export const env = createEnv({
    * isn't built with invalid env vars.
    */
   server: {
-    AUTH_SECRET:
-      process.env.NODE_ENV === "production"
-        ? z.string()
-        : z.string().optional(),
     DATABASE_URL: z.string().url(),
+    PRIVY_APP_SECRET: z.string(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -23,7 +20,7 @@ export const env = createEnv({
    * `NEXT_PUBLIC_`.
    */
   client: {
-    // NEXT_PUBLIC_CLIENTVAR: z.string(),
+    NEXT_PUBLIC_PRIVY_APP_ID: z.string(),
   },
 
   /**
@@ -31,8 +28,9 @@ export const env = createEnv({
    * middlewares) or client-side so we need to destruct manually.
    */
   runtimeEnv: {
-    AUTH_SECRET: process.env.AUTH_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
+    PRIVY_APP_SECRET: process.env.PRIVY_APP_SECRET,
+    NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
     NODE_ENV: process.env.NODE_ENV,
   },
   /**
