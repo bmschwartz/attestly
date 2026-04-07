@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "../../../../generated/prisma";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 
@@ -78,7 +79,7 @@ export const aiRouter = createTRPCRouter({
         data: {
           userId: ctx.userId,
           surveyId: input.surveyId,
-          surveyIds: input.surveyIds ?? null,
+          surveyIds: input.surveyIds ?? Prisma.JsonNull,
           title: input.title,
           messages: [],
         },

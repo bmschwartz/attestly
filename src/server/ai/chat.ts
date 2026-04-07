@@ -1,6 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { env } from "~/env";
-import type { Question, Answer } from "~/generated/prisma";
+import type { Question, Answer } from "../../../generated/prisma";
+
+if (!env.GEMINI_API_KEY) {
+  throw new Error("GEMINI_API_KEY is not configured");
+}
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
 const chatModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
@@ -24,8 +28,8 @@ function buildContext(surveys: SurveyData[]): string {
         };
 
         if (q.questionType === "RATING") {
-          const nums = answers.map((a) => parseFloat(a.value)).filter((n) => !isNaN(n));
-          summary.average = nums.length > 0 ? (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(1) : 0;
+          const nums = answers.map((a) => parseFloat(a.value)).filter((n: number) => !isNaN(n));
+          summary.average = nums.length > 0 ? (nums.reduce((a: number, b: number) => a + b, 0) / nums.length).toFixed(1) : 0;
         }
 
         if (q.questionType === "SINGLE_SELECT" || q.questionType === "MULTIPLE_CHOICE" || q.questionType === "RATING") {
