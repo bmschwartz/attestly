@@ -1,13 +1,15 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, login } = usePrivy();
+  const loginAttempted = useRef(false);
 
   useEffect(() => {
-    if (ready && !authenticated) {
+    if (ready && !authenticated && !loginAttempted.current) {
+      loginAttempted.current = true;
       login();
     }
   }, [ready, authenticated, login]);

@@ -26,6 +26,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
+    "@prisma/client-runtime-utils": "^7.6.0",
     "@privy-io/react-auth": "^3.19.0",
     "@privy-io/server-auth": "^1.32.5",
     "@t3-oss/env-nextjs": "^0.13.11",

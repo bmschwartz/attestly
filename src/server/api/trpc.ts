@@ -1,6 +1,7 @@
 /**
  * tRPC server initialization with Privy-based authentication.
  */
+import "server-only";
 
 import { initTRPC, TRPCError } from "@trpc/server";
 import { PrivyClient } from "@privy-io/server-auth";
