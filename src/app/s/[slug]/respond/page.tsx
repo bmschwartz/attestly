@@ -1,17 +1,45 @@
-"use client";
+import { api } from "~/trpc/server";
+import { notFound, redirect } from "next/navigation";
+import { SurveyRespondForm } from "./survey-respond-form";
 
-import { useParams } from "next/navigation";
-import { AuthGuard } from "~/app/_components/auth-guard";
+export default async function SurveyRespondPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
 
-export default function SurveyRespondPage() {
-  const { slug } = useParams<{ slug: string }>();
+  let survey;
+  try {
+    survey = await api.survey.getBySlug({ slug });
+  } catch {
+    notFound();
+  }
+
+  if (!survey || survey.status === "DRAFT") {
+    notFound();
+  }
+
+  if (survey.status === "CLOSED") {
+    redirect(`/s/${slug}`);
+  }
 
   return (
-    <AuthGuard>
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <h1 className="text-3xl font-bold text-gray-900">Respond to Survey</h1>
-        <p className="mt-4 text-gray-600">Slug: {slug}</p>
-      </div>
-    </AuthGuard>
+    <SurveyRespondForm
+      surveyId={survey.id}
+      surveyTitle={survey.title}
+      slug={slug}
+      questions={survey.questions.map((q) => ({
+        id: q.id,
+        text: q.text,
+        type: q.questionType as "SINGLE_SELECT" | "MULTIPLE_CHOICE" | "RATING" | "FREE_TEXT",
+        required: q.required,
+        index: q.position,
+        options: q.options as string[] | null,
+        minRating: q.minRating as number | null,
+        maxRating: q.maxRating as number | null,
+        maxLength: q.maxLength as number | null,
+      }))}
+    />
   );
 }
