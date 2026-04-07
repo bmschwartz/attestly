@@ -2,6 +2,73 @@
 
 import { useState } from "react";
 import { api } from "~/trpc/react";
+import type { SubscriptionPlan } from "~/generated/prisma";
+
+const PLAN_OPTIONS: SubscriptionPlan[] = ["FREE", "PREMIUM", "ENTERPRISE"];
+
+function SubscriptionManagementSection() {
+  const [userId, setUserId] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>("FREE");
+  const [result, setResult] = useState<string | null>(null);
+
+  const setUserPlan = api.admin.setUserPlan.useMutation({
+    onSuccess: (data) => {
+      setResult(`Updated user ${data.userId} to ${data.plan}`);
+    },
+    onError: (err) => {
+      setResult(`Error: ${err.message}`);
+    },
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!userId.trim()) return;
+    setResult(null);
+    await setUserPlan.mutateAsync({ userId: userId.trim(), plan: selectedPlan });
+  }
+
+  return (
+    <section className="mt-8">
+      <h2 className="text-lg font-medium">Subscription Management</h2>
+      <form onSubmit={(e) => void handleSubmit(e)} className="mt-4 space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">User ID (UUID)</label>
+          <input
+            type="text"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            className="mt-1 w-full rounded border px-3 py-2 text-sm font-mono"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Plan</label>
+          <select
+            value={selectedPlan}
+            onChange={(e) => setSelectedPlan(e.target.value as SubscriptionPlan)}
+            className="mt-1 rounded border px-3 py-2 text-sm"
+          >
+            {PLAN_OPTIONS.map((plan) => (
+              <option key={plan} value={plan}>{plan}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="submit"
+          disabled={setUserPlan.isPending || !userId.trim()}
+          className="rounded bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {setUserPlan.isPending ? "Updating..." : "Set Plan"}
+        </button>
+        {result && (
+          <p className={`text-sm ${result.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+            {result}
+          </p>
+        )}
+      </form>
+    </section>
+  );
+}
 
 export default function AdminPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -77,6 +144,8 @@ export default function AdminPage() {
           </div>
         )}
       </section>
+
+      <SubscriptionManagementSection />
     </main>
   );
 }
