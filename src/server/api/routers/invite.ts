@@ -42,7 +42,7 @@ export const inviteRouter = createTRPCRouter({
    * List all invites for a survey. Creator only.
    */
   list: protectedProcedure
-    .input(z.object({ surveyId: z.string().uuid() }))
+    .input(z.object({ surveyId: z.uuid() }))
     .query(async ({ ctx, input }) => {
       await verifyCreatorOwnership(ctx.db, input.surveyId, ctx.userId);
 
@@ -69,7 +69,7 @@ export const inviteRouter = createTRPCRouter({
   add: protectedProcedure
     .input(
       z.object({
-        surveyId: z.string().uuid(),
+        surveyId: z.uuid(),
         value: z.string().min(1).max(5000),
       }),
     )
@@ -181,7 +181,7 @@ export const inviteRouter = createTRPCRouter({
   remove: protectedProcedure
     .input(
       z.object({
-        inviteId: z.string().uuid(),
+        inviteId: z.uuid(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -217,7 +217,7 @@ export const inviteRouter = createTRPCRouter({
    * Checks EMAIL exact match and DOMAIN match on email domain.
    */
   check: protectedProcedure
-    .input(z.object({ surveyId: z.string().uuid() }))
+    .input(z.object({ surveyId: z.uuid() }))
     .query(async ({ ctx, input }) => {
       // Get the user's email
       const user = await ctx.db.user.findUnique({
@@ -268,7 +268,7 @@ export const inviteRouter = createTRPCRouter({
    * Returns count of EMAIL invitees who have submitted a response.
    */
   getProgress: protectedProcedure
-    .input(z.object({ surveyId: z.string().uuid() }))
+    .input(z.object({ surveyId: z.uuid() }))
     .query(async ({ ctx, input }) => {
       await verifyCreatorOwnership(ctx.db, input.surveyId, ctx.userId);
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AuthGuard } from "~/app/_components/auth-guard";
 import { ResponseCard } from "~/app/_components/response-card";
 import { api } from "~/trpc/react";
@@ -39,12 +40,12 @@ function MyResponsesContent() {
           <p className="text-gray-500">
             You haven&apos;t responded to any surveys yet.
           </p>
-          <a
+          <Link
             href="/"
             className="mt-2 inline-block text-sm font-medium text-blue-600 hover:text-blue-800"
           >
             Explore surveys &rarr;
-          </a>
+          </Link>
         </div>
       ) : (
         <div className="mt-6 space-y-4">

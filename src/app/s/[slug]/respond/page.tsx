@@ -36,9 +36,9 @@ export default async function SurveyRespondPage({
         required: q.required,
         index: q.position,
         options: q.options as string[] | null,
-        minRating: q.minRating as number | null,
-        maxRating: q.maxRating as number | null,
-        maxLength: q.maxLength as number | null,
+        minRating: q.minRating,
+        maxRating: q.maxRating,
+        maxLength: q.maxLength,
       }))}
     />
   );

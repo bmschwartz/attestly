@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 
 export const userRouter = createTRPCRouter({
   getProfile: publicProcedure
-    .input(z.object({ userId: z.string().uuid() }))
+    .input(z.object({ userId: z.uuid() }))
     .query(async ({ ctx, input }) => {
       const user = await ctx.db.user.findUnique({
         where: { id: input.userId },
@@ -48,8 +48,8 @@ export const userRouter = createTRPCRouter({
 
   getPublicSurveys: publicProcedure
     .input(z.object({
-      userId: z.string().uuid(),
-      cursor: z.string().uuid().optional(),
+      userId: z.uuid(),
+      cursor: z.uuid().optional(),
       limit: z.number().int().min(1).max(50).default(20),
     }))
     .query(async ({ ctx, input }) => {

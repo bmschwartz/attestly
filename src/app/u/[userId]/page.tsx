@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { api } from "~/trpc/server";
 import { notFound } from "next/navigation";
 import { SurveyCard } from "~/app/_components/survey-card";
@@ -28,7 +29,7 @@ export default async function UserProfilePage({
       <div className="flex items-start gap-4">
         <div className="h-16 w-16 flex-shrink-0 rounded-full bg-gray-200 overflow-hidden">
           {profile.avatar ? (
-            <img src={profile.avatar} alt="" className="h-full w-full object-cover" />
+            <Image src={profile.avatar} alt="" width={64} height={64} className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-2xl text-gray-400">
               {(profile.displayName ?? "?")[0]?.toUpperCase()}

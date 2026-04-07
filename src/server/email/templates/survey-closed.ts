@@ -45,7 +45,7 @@ export async function sendSurveyClosedEmail({
 
   if (error) {
     console.error(`Failed to send survey closed email to ${to}:`, error);
-    throw error;
+    throw new Error(error.message);
   }
 }
 

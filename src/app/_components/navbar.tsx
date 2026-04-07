@@ -13,12 +13,12 @@ function getUserInitial(user: ReturnType<typeof usePrivy>["user"]): string {
     (a) => a.type === "google_oauth",
   );
   if (googleAccount && "name" in googleAccount && googleAccount.name) {
-    return (googleAccount.name as string).charAt(0).toUpperCase();
+    return (googleAccount.name).charAt(0).toUpperCase();
   }
 
   const emailAccount = user.linkedAccounts?.find((a) => a.type === "email");
   if (emailAccount && "address" in emailAccount && emailAccount.address) {
-    return (emailAccount.address as string).charAt(0).toUpperCase();
+    return (emailAccount.address).charAt(0).toUpperCase();
   }
 
   if (user.email?.address) {
@@ -35,12 +35,12 @@ function getDisplayName(user: ReturnType<typeof usePrivy>["user"]): string {
     (a) => a.type === "google_oauth",
   );
   if (googleAccount && "name" in googleAccount && googleAccount.name) {
-    return googleAccount.name as string;
+    return googleAccount.name;
   }
 
   const emailAccount = user.linkedAccounts?.find((a) => a.type === "email");
   if (emailAccount && "address" in emailAccount && emailAccount.address) {
-    return emailAccount.address as string;
+    return emailAccount.address;
   }
 
   if (user.email?.address) {
@@ -57,12 +57,12 @@ function getEmail(user: ReturnType<typeof usePrivy>["user"]): string | null {
     (a) => a.type === "google_oauth",
   );
   if (googleAccount && "email" in googleAccount && googleAccount.email) {
-    return googleAccount.email as string;
+    return googleAccount.email;
   }
 
   const emailAccount = user.linkedAccounts?.find((a) => a.type === "email");
   if (emailAccount && "address" in emailAccount && emailAccount.address) {
-    return emailAccount.address as string;
+    return emailAccount.address;
   }
 
   if (user.email?.address) {

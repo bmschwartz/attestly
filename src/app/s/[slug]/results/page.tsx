@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { ResultsAccessGate } from "~/app/_components/results/results-access-gate";
@@ -76,24 +77,24 @@ export default function ResultsPage() {
 
             {/* Navigation links */}
             <div className="mt-8 flex justify-center gap-4 border-t border-gray-200 pt-6">
-              <a
+              <Link
                 href={`/s/${slug}`}
                 className="text-sm font-medium text-gray-600 hover:text-gray-900"
               >
                 Survey Details
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/my-responses"
                 className="text-sm font-medium text-gray-600 hover:text-gray-900"
               >
                 My Responses
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/"
                 className="text-sm font-medium text-gray-600 hover:text-gray-900"
               >
                 Home
-              </a>
+              </Link>
             </div>
           </>
         )}

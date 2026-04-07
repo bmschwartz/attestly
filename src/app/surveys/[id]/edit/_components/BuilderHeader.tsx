@@ -30,8 +30,8 @@ const SAVE_STATUS_COLORS: Record<SaveStatus, string> = {
 export function BuilderHeader({
   saveStatus,
   surveyId,
-  survey,
-  questions,
+  survey: _survey,
+  questions: _questions,
   validationErrors,
   onPublish,
 }: BuilderHeaderProps) {

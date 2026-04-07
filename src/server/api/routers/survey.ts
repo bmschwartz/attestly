@@ -23,24 +23,6 @@ function randomSuffix(): string {
   return randomBytes(4).toString("hex"); // 8 hex chars = 4 billion combinations
 }
 
-const VALID_CATEGORIES = [
-  "technology",
-  "science",
-  "education",
-  "health",
-  "business",
-  "entertainment",
-  "sports",
-  "politics",
-  "environment",
-  "lifestyle",
-  "finance",
-  "travel",
-  "food",
-  "arts",
-  "other",
-];
-
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------

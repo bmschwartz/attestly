@@ -35,7 +35,7 @@ export const adminRouter = createTRPCRouter({
     }),
 
   featureSurvey: protectedProcedure
-    .input(z.object({ surveyId: z.string().uuid() }))
+    .input(z.object({ surveyId: z.uuid() }))
     .mutation(async ({ ctx, input }) => {
       await assertAdmin(ctx);
       const featuredCount = await ctx.db.survey.count({
@@ -51,7 +51,7 @@ export const adminRouter = createTRPCRouter({
     }),
 
   unfeatureSurvey: protectedProcedure
-    .input(z.object({ surveyId: z.string().uuid() }))
+    .input(z.object({ surveyId: z.uuid() }))
     .mutation(async ({ ctx, input }) => {
       await assertAdmin(ctx);
       return ctx.db.survey.update({
@@ -62,7 +62,7 @@ export const adminRouter = createTRPCRouter({
 
   reorderFeatured: protectedProcedure
     .input(z.object({
-      surveyIds: z.array(z.string().uuid()),
+      surveyIds: z.array(z.uuid()),
     }))
     .mutation(async ({ ctx, input }) => {
       await assertAdmin(ctx);
@@ -79,7 +79,7 @@ export const adminRouter = createTRPCRouter({
 
   setUserPlan: protectedProcedure
     .input(z.object({
-      userId: z.string().uuid(),
+      userId: z.uuid(),
       plan: z.enum(["FREE", "PREMIUM", "ENTERPRISE"]),
     }))
     .mutation(async ({ ctx, input }) => {

@@ -1,9 +1,12 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { TRPCError } from "@trpc/server";
+import { type db } from "~/server/db";
+
+type DbClient = typeof db;
 
 async function verifyDraftSurveyOwnership(
-  db: any,
+  db: DbClient,
   surveyId: string,
   userId: string,
 ) {
@@ -29,8 +32,8 @@ export const questionRouter = createTRPCRouter({
   upsert: protectedProcedure
     .input(
       z.object({
-        surveyId: z.string().uuid(),
-        questionId: z.string().uuid().optional(),
+        surveyId: z.uuid(),
+        questionId: z.uuid().optional(),
         text: z.string().min(1),
         questionType: z.enum(["SINGLE_SELECT", "MULTIPLE_CHOICE", "RATING", "FREE_TEXT"]),
         position: z.number().int().min(0),
@@ -49,7 +52,7 @@ export const questionRouter = createTRPCRouter({
           where: { id: input.questionId },
           select: { surveyId: true },
         });
-        if (!existing || existing.surveyId !== input.surveyId) {
+        if (existing?.surveyId !== input.surveyId) {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Question not found in this survey",
@@ -86,7 +89,7 @@ export const questionRouter = createTRPCRouter({
     }),
 
   delete: protectedProcedure
-    .input(z.object({ questionId: z.string().uuid() }))
+    .input(z.object({ questionId: z.uuid() }))
     .mutation(async ({ ctx, input }) => {
       const question = await ctx.db.question.findUnique({
         where: { id: input.questionId },
@@ -98,7 +101,7 @@ export const questionRouter = createTRPCRouter({
 
       await verifyDraftSurveyOwnership(ctx.db, question.surveyId, ctx.userId);
 
-      await ctx.db.$transaction(async (tx: any) => {
+      await ctx.db.$transaction(async (tx) => {
         await tx.question.delete({ where: { id: input.questionId } });
         await tx.question.updateMany({
           where: {
@@ -115,7 +118,7 @@ export const questionRouter = createTRPCRouter({
   reorder: protectedProcedure
     .input(
       z.object({
-        questionId: z.string().uuid(),
+        questionId: z.uuid(),
         direction: z.enum(["up", "down"]),
       }),
     )
@@ -151,7 +154,7 @@ export const questionRouter = createTRPCRouter({
       }
 
       const tempPosition = -1;
-      await ctx.db.$transaction(async (tx: any) => {
+      await ctx.db.$transaction(async (tx) => {
         await tx.question.update({ where: { id: question.id }, data: { position: tempPosition } });
         await tx.question.update({ where: { id: adjacent.id }, data: { position: question.position } });
         await tx.question.update({ where: { id: question.id }, data: { position: targetPosition } });

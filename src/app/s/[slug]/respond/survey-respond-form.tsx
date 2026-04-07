@@ -82,16 +82,18 @@ export function SurveyRespondForm({
 
   // --- Poll survey status to detect mid-response close ---
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const survey = await utils.survey.getBySlug.fetch({ slug });
-        if (survey?.status === "CLOSED") {
-          setSurveyClosed(true);
-          clearInterval(interval);
+    const interval = setInterval(() => {
+      void (async () => {
+        try {
+          const survey = await utils.survey.getBySlug.fetch({ slug });
+          if (survey?.status === "CLOSED") {
+            setSurveyClosed(true);
+            clearInterval(interval);
+          }
+        } catch {
+          // Ignore polling errors silently
         }
-      } catch {
-        // Ignore polling errors silently
-      }
+      })();
     }, 30_000);
     return () => clearInterval(interval);
   }, [slug, utils]);

@@ -19,19 +19,20 @@ export function useAutoSave(
 
       setStatus("saving");
 
-      const timer = setTimeout(async () => {
+      const timer = setTimeout(() => {
         timers.current.delete(questionId);
         pendingCount.current += 1;
-        try {
-          await saveFn(questionId, value);
-          pendingCount.current -= 1;
-          if (pendingCount.current === 0) {
-            setStatus("saved");
-          }
-        } catch {
-          pendingCount.current -= 1;
-          setStatus("error");
-        }
+        saveFn(questionId, value)
+          .then(() => {
+            pendingCount.current -= 1;
+            if (pendingCount.current === 0) {
+              setStatus("saved");
+            }
+          })
+          .catch(() => {
+            pendingCount.current -= 1;
+            setStatus("error");
+          });
       }, debounceMs);
 
       timers.current.set(questionId, timer);

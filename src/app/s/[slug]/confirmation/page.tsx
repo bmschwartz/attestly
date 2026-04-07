@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AuthGuard } from "~/app/_components/auth-guard";
 import { api } from "~/trpc/react";
@@ -188,18 +189,18 @@ function ConfirmationContent({ slug }: { slug: string }) {
 
         {/* Navigation links */}
         <div className="flex justify-center gap-4 pt-2">
-          <a
+          <Link
             href="/my-responses"
             className="text-sm font-medium text-gray-600 hover:text-gray-900"
           >
             My Responses
-          </a>
-          <a
+          </Link>
+          <Link
             href="/"
             className="text-sm font-medium text-gray-600 hover:text-gray-900"
           >
             Home
-          </a>
+          </Link>
         </div>
       </div>
     </main>

@@ -9,7 +9,7 @@ type AccessGateProps = {
 };
 
 export function ResultsAccessGate({
-  surveyStatus,
+  surveyStatus: _surveyStatus,
   resultsVisibility,
   isLoading,
   error,

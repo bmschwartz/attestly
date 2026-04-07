@@ -88,7 +88,7 @@ export const exploreRouter = createTRPCRouter({
       z.object({
         categories: z.array(z.string()).optional(),
         sort: z.enum(["trending", "newest", "most_responses"]).default("trending"),
-        cursor: z.string().uuid().optional(),
+        cursor: z.uuid().optional(),
         limit: z.number().int().min(1).max(50).default(20),
       }),
     )
@@ -114,7 +114,7 @@ export const exploreRouter = createTRPCRouter({
           creator: { select: { id: true, displayName: true, walletAddress: true } },
           _count: { select: { responses: { where: { status: "SUBMITTED", deletedAt: null } } } },
         },
-        orderBy: orderBy ? orderBy : undefined,
+        orderBy: orderBy ?? undefined,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
       });
 

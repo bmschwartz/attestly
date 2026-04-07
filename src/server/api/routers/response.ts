@@ -4,14 +4,14 @@ import { TRPCError } from "@trpc/server";
 
 export const responseRouter = createTRPCRouter({
   start: protectedProcedure
-    .input(z.object({ surveyId: z.string().uuid() }))
+    .input(z.object({ surveyId: z.uuid() }))
     .mutation(async ({ ctx, input }) => {
       // Check survey exists and is published
       const survey = await ctx.db.survey.findUnique({
         where: { id: input.surveyId },
         select: { id: true, status: true, accessMode: true, creatorId: true },
       });
-      if (!survey || survey.status !== "PUBLISHED") {
+      if (survey?.status !== "PUBLISHED") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found or not published" });
       }
 
@@ -63,8 +63,8 @@ export const responseRouter = createTRPCRouter({
   saveAnswer: protectedProcedure
     .input(
       z.object({
-        responseId: z.string().uuid(),
-        questionId: z.string().uuid(),
+        responseId: z.uuid(),
+        questionId: z.uuid(),
         questionIndex: z.number().int(),
         questionType: z.enum(["SINGLE_SELECT", "MULTIPLE_CHOICE", "RATING", "FREE_TEXT"]),
         value: z.string(),
@@ -76,7 +76,7 @@ export const responseRouter = createTRPCRouter({
         where: { id: input.responseId },
         select: { respondentId: true, status: true },
       });
-      if (!response || response.respondentId !== ctx.userId) {
+      if (response?.respondentId !== ctx.userId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Response not found" });
       }
       if (response.status !== "IN_PROGRESS") {
@@ -103,7 +103,7 @@ export const responseRouter = createTRPCRouter({
     }),
 
   submit: protectedProcedure
-    .input(z.object({ responseId: z.string().uuid() }))
+    .input(z.object({ responseId: z.uuid() }))
     .mutation(async ({ ctx, input }) => {
       const response = await ctx.db.response.findUnique({
         where: { id: input.responseId },
@@ -112,7 +112,7 @@ export const responseRouter = createTRPCRouter({
           answers: true,
         },
       });
-      if (!response || response.respondentId !== ctx.userId) {
+      if (response?.respondentId !== ctx.userId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Response not found" });
       }
       if (response.status !== "IN_PROGRESS") {
@@ -145,13 +145,13 @@ export const responseRouter = createTRPCRouter({
     }),
 
   clear: protectedProcedure
-    .input(z.object({ responseId: z.string().uuid() }))
+    .input(z.object({ responseId: z.uuid() }))
     .mutation(async ({ ctx, input }) => {
       const response = await ctx.db.response.findUnique({
         where: { id: input.responseId },
         select: { respondentId: true, status: true },
       });
-      if (!response || response.respondentId !== ctx.userId) {
+      if (response?.respondentId !== ctx.userId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Response not found" });
       }
       if (response.status !== "IN_PROGRESS") {

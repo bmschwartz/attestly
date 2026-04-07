@@ -45,7 +45,7 @@ export async function sendInvitationEmail({
 
   if (error) {
     console.error(`Failed to send invitation email to ${to}:`, error);
-    throw error;
+    throw new Error(error.message);
   }
 }
 
