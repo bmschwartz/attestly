@@ -7,8 +7,16 @@ import { Navbar } from "~/app/_components/navbar";
 
 export const metadata: Metadata = {
   title: "Attestly",
-  description: "",
+  description: "Create, share, and verify surveys on-chain",
+  metadataBase: new URL("https://attest.ly"),
   icons: [{ rel: "icon", url: "/favicon.ico" }],
+  openGraph: {
+    title: "Attestly",
+    description: "Create, share, and verify surveys on-chain",
+    url: "https://attest.ly",
+    siteName: "Attestly",
+    type: "website",
+  },
 };
 
 const geist = Geist({
