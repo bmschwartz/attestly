@@ -5,6 +5,8 @@ import { api } from "~/trpc/react";
 import { BarChart } from "./bar-chart";
 import { RatingResult } from "./rating-result";
 import { FreeTextList } from "./free-text-list";
+import { AiSummaryCard } from "~/app/_components/ai-summary-card";
+import { PremiumUpsell } from "~/app/_components/premium-upsell";
 
 type SelectAggregation = {
   questionId: string;
@@ -70,15 +72,28 @@ function FreeTextQuestionSection({
   );
 }
 
+type AiSummaryItem = { questionId: string | null; content: string };
+
 function QuestionSection({
   question,
   index,
   slug,
+  isPremium,
+  surveyId,
+  aiSummaries,
 }: {
   question: QuestionAggregation;
   index: number;
   slug: string;
+  isPremium: boolean;
+  surveyId: string;
+  aiSummaries: AiSummaryItem[];
 }) {
+  const questionSummary =
+    question.questionType === "FREE_TEXT"
+      ? (aiSummaries.find((s) => s.questionId === question.questionId) ?? null)
+      : null;
+
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-5">
       <h3 className="text-base font-semibold text-gray-900">
@@ -103,7 +118,23 @@ function QuestionSection({
           />
         )}
         {question.questionType === "FREE_TEXT" && (
-          <FreeTextQuestionSection question={question} slug={slug} />
+          <>
+            <FreeTextQuestionSection question={question} slug={slug} />
+            <div className="mt-3">
+              {isPremium ? (
+                <AiSummaryCard
+                  surveyId={surveyId}
+                  questionId={question.questionId}
+                  content={questionSummary?.content ?? null}
+                />
+              ) : (
+                <PremiumUpsell
+                  feature="AI Summary"
+                  message={`Get AI-powered analysis of these ${question.totalResponses} free text responses — available on Premium`}
+                />
+              )}
+            </div>
+          </>
         )}
       </div>
     </section>
@@ -113,9 +144,15 @@ function QuestionSection({
 export function QuestionResultsList({
   questions,
   slug,
+  isPremium = false,
+  surveyId = "",
+  aiSummaries = [],
 }: {
   questions: QuestionAggregation[];
   slug: string;
+  isPremium?: boolean;
+  surveyId?: string;
+  aiSummaries?: AiSummaryItem[];
 }) {
   if (questions.length === 0) {
     return (
@@ -133,6 +170,9 @@ export function QuestionResultsList({
           question={question}
           index={index}
           slug={slug}
+          isPremium={isPremium}
+          surveyId={surveyId}
+          aiSummaries={aiSummaries}
         />
       ))}
     </div>
