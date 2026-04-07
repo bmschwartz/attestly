@@ -1,6 +1,8 @@
 import { api } from "~/trpc/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { FREE_TIER_LIMITS } from "~/lib/premium";
+import type { SubscriptionPlan, SubscriptionStatus } from "../../../../generated/prisma";
 
 export default async function SurveyLandingPage({
   params,
@@ -22,6 +24,13 @@ export default async function SurveyLandingPage({
 
   const questionCount = survey.questions?.length ?? 0;
   const estimatedMinutes = Math.max(1, Math.ceil((questionCount * 30) / 60));
+  const responseCount = survey._count?.responses ?? 0;
+
+  // Check if free-tier response limit is reached
+  const creatorSub = (survey.creator as { subscription?: { plan: SubscriptionPlan; status: SubscriptionStatus } | null }).subscription;
+  const creatorPremium = creatorSub != null && creatorSub.plan !== "FREE" && creatorSub.status === "ACTIVE";
+  const isResponseLimitReached =
+    !creatorPremium && responseCount >= FREE_TIER_LIMITS.maxResponsesPerSurvey;
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
@@ -47,6 +56,11 @@ export default async function SurveyLandingPage({
           >
             View results
           </Link>
+        </div>
+      ) : isResponseLimitReached ? (
+        <div className="mt-8 rounded-lg border border-gray-300 bg-gray-50 p-4 text-center">
+          <p className="font-medium text-gray-700">This survey has reached its response limit</p>
+          <p className="mt-1 text-sm text-gray-500">No new responses are being accepted.</p>
         </div>
       ) : (
         <Link

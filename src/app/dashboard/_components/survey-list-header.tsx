@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { api } from "~/trpc/react";
+import { usePremium } from "~/hooks/use-premium";
+import { FREE_TIER_LIMITS } from "~/lib/premium";
 
 const STATUS_TABS = ["ALL", "DRAFT", "PUBLISHED", "CLOSED"] as const;
 const SORT_OPTIONS = [
@@ -36,7 +38,8 @@ export function SurveyListHeader({
   });
 
   const { data: stats } = api.survey.getStats.useQuery();
-  const isAtLimit = (stats?.totalSurveys ?? 0) >= 5;
+  const { isPremium } = usePremium();
+  const isAtLimit = !isPremium && (stats?.totalSurveys ?? 0) >= FREE_TIER_LIMITS.maxSurveys;
 
   return (
     <div className="flex flex-col gap-4">
