@@ -7,6 +7,7 @@ import { responseRouter } from "~/server/api/routers/response";
 import { resultsRouter } from "~/server/api/routers/results";
 import { surveyRouter } from "~/server/api/routers/survey";
 import { userRouter } from "~/server/api/routers/user";
+import { profileRouter } from "~/server/api/routers/profile";
 
 /**
  * This is the primary router for your server.
@@ -22,6 +23,7 @@ export const appRouter = createTRPCRouter({
   results: resultsRouter,
   survey: surveyRouter,
   user: userRouter,
+  profile: profileRouter,
 });
 
 // export type definition of API
