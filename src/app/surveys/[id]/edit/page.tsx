@@ -1,17 +1,25 @@
-"use client";
+import { notFound, redirect } from "next/navigation";
+import { api } from "~/trpc/server";
+import { SurveyBuilderClient } from "./_components/SurveyBuilderClient";
 
-import { useParams } from "next/navigation";
-import { AuthGuard } from "~/app/_components/auth-guard";
+// Auth handled by AuthGuard component from Plan 1c
 
-export default function SurveyEditPage() {
-  const { id } = useParams<{ id: string }>();
+export default async function SurveyBuilderPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
 
-  return (
-    <AuthGuard>
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <h1 className="text-3xl font-bold text-gray-900">Edit Survey</h1>
-        <p className="mt-4 text-gray-600">Survey ID: {id}</p>
-      </div>
-    </AuthGuard>
-  );
+  const survey = await api.survey.getForEdit({ id });
+  if (!survey) {
+    notFound();
+  }
+
+  // Cannot edit published/closed surveys
+  if (survey.status !== "DRAFT") {
+    redirect(`/surveys/${id}`);
+  }
+
+  return <SurveyBuilderClient initialSurvey={survey} />;
 }
