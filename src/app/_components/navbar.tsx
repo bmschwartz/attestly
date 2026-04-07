@@ -73,7 +73,7 @@ function getEmail(user: ReturnType<typeof usePrivy>["user"]): string | null {
 }
 
 export function Navbar() {
-  const { ready, authenticated, user, logout } = usePrivy();
+  const { ready, authenticated, user, login, logout } = usePrivy();
   const pathname = usePathname();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -183,9 +183,10 @@ export function Navbar() {
                     </Link>
 
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         setDropdownOpen(false);
-                        void logout();
+                        await logout();
+                        window.location.href = "/";
                       }}
                       className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                     >
@@ -196,11 +197,7 @@ export function Navbar() {
               </div>
             ) : (
               <button
-                onClick={() => {
-                  // Will be handled by Privy — no direct import of login here
-                  // since unauthenticated users can click Sign In from any page
-                  window.location.href = "/dashboard";
-                }}
+                onClick={() => login()}
                 className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
               >
                 Sign In

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface SurveyCardProps {
   survey: {
@@ -14,14 +17,15 @@ interface SurveyCardProps {
 }
 
 export function SurveyCard({ survey }: SurveyCardProps) {
+  const router = useRouter();
   const categories = (survey.categories as string[]) ?? [];
   const tags = (survey.tags as string[]) ?? [];
   const timeAgo = survey.publishedAt ? getTimeAgo(survey.publishedAt) : "";
 
   return (
-    <Link
-      href={`/s/${survey.slug}`}
-      className="block rounded-lg border border-gray-200 p-4 transition hover:border-gray-300 hover:shadow-sm"
+    <div
+      onClick={() => router.push(`/s/${survey.slug}`)}
+      className="block cursor-pointer rounded-lg border border-gray-200 p-4 transition hover:border-gray-300 hover:shadow-sm"
     >
       <div className="flex items-start justify-between">
         <h3 className="font-medium">{survey.title}</h3>
@@ -51,7 +55,7 @@ export function SurveyCard({ survey }: SurveyCardProps) {
           ))}
         </div>
       )}
-    </Link>
+    </div>
   );
 }
 

@@ -3,14 +3,14 @@
 import { useParams, useRouter } from "next/navigation";
 import { AuthGuard } from "~/app/_components/auth-guard";
 import { api } from "~/trpc/react";
-import { SurveyBuilderClient } from "./_components/SurveyBuilderClient";
+import { SurveyBuilderClient } from "~/app/surveys/[id]/edit/_components/SurveyBuilderClient";
 
-export default function SurveyBuilderPage() {
-  const params = useParams<{ id: string }>();
+export default function SurveyBuilderBySlugPage() {
+  const params = useParams<{ slug: string }>();
   const router = useRouter();
 
   const { data: survey, isLoading, error } = api.survey.getForEdit.useQuery(
-    { id: params.id },
+    { slug: params.slug },
     { retry: false },
   );
 

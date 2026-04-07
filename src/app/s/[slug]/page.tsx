@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { FREE_TIER_LIMITS } from "~/lib/premium";
 import type { SubscriptionPlan, SubscriptionStatus } from "../../../../generated/prisma";
+import { StartSurveyButton } from "./_components/start-survey-button";
 
 export default async function SurveyLandingPage({
   params,
@@ -63,12 +64,7 @@ export default async function SurveyLandingPage({
           <p className="mt-1 text-sm text-gray-500">No new responses are being accepted.</p>
         </div>
       ) : (
-        <Link
-          href={`/s/${slug}/respond`}
-          className="mt-8 inline-block rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
-        >
-          Start Survey
-        </Link>
+        <StartSurveyButton slug={slug} />
       )}
 
       {survey.publishedAt && (

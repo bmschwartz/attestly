@@ -357,8 +357,17 @@ export function SurveyRespondForm({
         </button>
       </footer>
 
+      {/* --- Submitting Overlay --- */}
+      {submitMutation.isPending && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
+          <p className="mt-4 text-lg font-medium text-gray-700">Submitting your response...</p>
+          <p className="mt-1 text-sm text-gray-500">Please don&apos;t close this page.</p>
+        </div>
+      )}
+
       {/* --- Confirmation Dialog --- */}
-      {showConfirmDialog && (
+      {showConfirmDialog && !submitMutation.isPending && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
             <h2 className="text-lg font-bold">Submit your response?</h2>

@@ -30,7 +30,7 @@ export function useAutoSave(builder: BuilderReturn) {
     if (builder.surveyDirty) {
       promises.push(
         surveyUpdateMutation.mutateAsync({
-          id: builder.survey.title, // This will be the survey ID passed through context
+          id: builder.surveyId,
           title: builder.survey.title,
           description: builder.survey.description,
           slug: builder.survey.slug,
@@ -50,7 +50,7 @@ export function useAutoSave(builder: BuilderReturn) {
         promises.push(
           questionUpsertMutation.mutateAsync({
             questionId: question.id,
-            surveyId: question.id, // Will be wired to actual survey ID
+            surveyId: builder.surveyId,
             text: question.text,
             questionType: question.questionType,
             position: question.position,

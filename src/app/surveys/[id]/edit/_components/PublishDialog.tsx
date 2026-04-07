@@ -12,9 +12,9 @@ export function PublishDialog({ onClose, surveyId }: PublishDialogProps) {
   const router = useRouter();
 
   const publishMutation = api.survey.publish.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       // Redirect to the published survey landing page
-      router.push(`/surveys/${surveyId}`);
+      router.push(`/s/${data.slug}`);
     },
     onError: () => {
       // Stay on dialog, show error
@@ -24,6 +24,16 @@ export function PublishDialog({ onClose, surveyId }: PublishDialogProps) {
   const handleConfirm = () => {
     publishMutation.mutate({ id: surveyId });
   };
+
+  if (publishMutation.isPending) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
+        <p className="mt-4 text-lg font-medium text-gray-700">Publishing your survey...</p>
+        <p className="mt-1 text-sm text-gray-500">Please don&apos;t close this page.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -45,17 +55,15 @@ export function PublishDialog({ onClose, surveyId }: PublishDialogProps) {
         <div className="mt-6 flex justify-end gap-3">
           <button
             onClick={onClose}
-            disabled={publishMutation.isPending}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
-            disabled={publishMutation.isPending}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
-            {publishMutation.isPending ? "Publishing..." : "Publish"}
+            Publish
           </button>
         </div>
       </div>

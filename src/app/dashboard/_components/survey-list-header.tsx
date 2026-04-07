@@ -29,14 +29,6 @@ export function SurveyListHeader({
   const router = useRouter();
   const utils = api.useUtils();
 
-  const createSurvey = api.survey.create.useMutation({
-    onSuccess: (data) => {
-      void utils.survey.getStats.invalidate();
-      void utils.survey.listMine.invalidate();
-      router.push(`/surveys/${data.id}/edit`);
-    },
-  });
-
   const { data: stats } = api.survey.getStats.useQuery();
   const { isPremium } = usePremium();
   const isAtLimit = !isPremium && (stats?.totalSurveys ?? 0) >= FREE_TIER_LIMITS.maxSurveys;
@@ -46,8 +38,8 @@ export function SurveyListHeader({
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">Your Surveys</h2>
         <button
-          onClick={() => createSurvey.mutate({})}
-          disabled={createSurvey.isPending || isAtLimit}
+          onClick={() => router.push("/surveys/new")}
+          disabled={isAtLimit}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           title={
             isAtLimit
@@ -55,7 +47,7 @@ export function SurveyListHeader({
               : undefined
           }
         >
-          {createSurvey.isPending ? "Creating..." : "+ New Survey"}
+          + New Survey
         </button>
       </div>
 

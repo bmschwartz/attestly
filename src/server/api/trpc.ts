@@ -142,24 +142,39 @@ const authMiddleware = t.middleware(async ({ ctx, next }) => {
   const email = privyUser.email?.address ?? null;
 
   // Upsert User — create with FREE Subscription on first login.
-  const user = await ctx.db.user.upsert({
-    where: { privyId: privyUserId },
-    update: {
-      ...(walletAddress ? { walletAddress } : {}),
-      ...(email ? { email } : {}),
-    },
-    create: {
-      privyId: privyUserId,
-      walletAddress: walletAddress ?? "pending",
-      email,
-      subscription: {
-        create: {
-          plan: "FREE",
-          status: "ACTIVE",
+  // Wrap in try/catch to handle race condition when multiple requests
+  // arrive simultaneously for a new user (concurrent upsert creates).
+  let user;
+  try {
+    user = await ctx.db.user.upsert({
+      where: { privyId: privyUserId },
+      update: {
+        ...(walletAddress ? { walletAddress } : {}),
+        ...(email ? { email } : {}),
+      },
+      create: {
+        privyId: privyUserId,
+        walletAddress: walletAddress ?? "pending",
+        email,
+        subscription: {
+          create: {
+            plan: "FREE",
+            status: "ACTIVE",
+          },
         },
       },
-    },
-  });
+    });
+  } catch (e: unknown) {
+    // Unique constraint violation — another request already created the user
+    const prismaError = e as { code?: string };
+    if (prismaError.code === "P2002") {
+      user = await ctx.db.user.findUniqueOrThrow({
+        where: { privyId: privyUserId },
+      });
+    } else {
+      throw e;
+    }
+  }
 
   return next({
     ctx: {

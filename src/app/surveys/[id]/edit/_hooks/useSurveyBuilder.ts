@@ -210,6 +210,7 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
   }, [publishMutation, initialSurvey.id]);
 
   return {
+    surveyId: initialSurvey.id,
     survey,
     questions,
     validationErrors,

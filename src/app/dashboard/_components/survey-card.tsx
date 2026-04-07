@@ -51,7 +51,7 @@ function DraftCard({ survey }: { survey: Survey }) {
           </div>
           <div className="flex gap-2">
             <a
-              href={`/surveys/${survey.id}/edit`}
+              href={`/s/${survey.slug}/edit`}
               className="rounded-md bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-100"
             >
               Edit

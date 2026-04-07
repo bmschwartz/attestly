@@ -158,10 +158,13 @@ export const surveyRouter = createTRPCRouter({
    * 3. getForEdit — fetch a survey (with ordered questions) for the owner to edit.
    */
   getForEdit: protectedProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string().optional(), slug: z.string().optional() }).refine(
+      (data) => data.id || data.slug,
+      { message: "Either id or slug must be provided" },
+    ))
     .query(async ({ ctx, input }) => {
       const survey = await ctx.db.survey.findUnique({
-        where: { id: input.id },
+        where: input.id ? { id: input.id } : { slug: input.slug! },
         include: {
           questions: {
             orderBy: { position: "asc" },
