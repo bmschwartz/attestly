@@ -628,7 +628,7 @@ async function main() {
     create: {
       privyId: "test-privy-id",
       walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
-      email: "test@attestly.com",
+      email: "test@attestly.app",
       displayName: "Test User",
       isAdmin: true,
       subscription: {

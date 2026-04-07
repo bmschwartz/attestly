@@ -101,7 +101,7 @@ import { env } from "~/env";
 export const resend = new Resend(env.RESEND_API_KEY);
 
 /** Default sender address — update to your verified domain */
-export const FROM_EMAIL = "Attestly <noreply@attestly.com>";
+export const FROM_EMAIL = "Attestly <noreply@attestly.app>";
 ```
 
 - [ ] **Step 3: Create the invitation email template**
@@ -449,7 +449,7 @@ Add inside the `createTRPCRouter({})` call in `src/server/api/routers/invite.ts`
       });
 
       // Send invitation emails for EMAIL invites (fire-and-forget, don't block)
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://attestly.com";
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://attestly.app";
       const surveyUrl = `${baseUrl}/s/${survey.slug}`;
 
       const emailEntries = newEntries.filter((e) => e.type === "EMAIL");

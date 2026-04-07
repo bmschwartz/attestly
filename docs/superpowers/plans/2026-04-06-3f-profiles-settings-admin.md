@@ -4,9 +4,9 @@
 
 **Goal:** Build public user profiles, profile settings (display name, avatar, bio), and the admin page for featured survey management.
 
-**Architecture:** User and profile tRPC routers for public profile data and settings mutations. Admin router restricted to `isAdmin` users. Avatar stored as a URL (initially base64 data URL, later migrated to S3/R2).
+**Architecture:** User and profile tRPC routers for public profile data and settings mutations. Admin router restricted to `isAdmin` users. Avatar images uploaded to Cloudflare R2 (S3-compatible) via a server-side tRPC mutation; the R2 public URL is stored in `User.avatar`.
 
-**Tech Stack:** Next.js App Router, tRPC 11, Prisma 7, Tailwind CSS, Zod
+**Tech Stack:** Next.js App Router, tRPC 11, Prisma 7, Tailwind CSS, Zod, `@aws-sdk/client-s3` (for Cloudflare R2)
 
 **Spec reference:** `docs/superpowers/specs/2026-04-05-public-survey-discovery-design.md`
 
@@ -204,14 +204,69 @@ git commit -m "feat: add user profile page"
 
 **Files:**
 - Create: `src/server/api/routers/profile.ts`
+- Create: `src/lib/r2.ts`
 - Create: `src/app/settings/profile/page.tsx`
 - Modify: `src/server/api/root.ts`
 
-- [ ] **Step 1: Create profile router**
+**Environment variables required:**
+- `CLOUDFLARE_R2_ACCOUNT_ID`
+- `CLOUDFLARE_R2_ACCESS_KEY_ID`
+- `CLOUDFLARE_R2_SECRET_ACCESS_KEY`
+- `CLOUDFLARE_R2_BUCKET_NAME`
+
+- [ ] **Step 0: Install `@aws-sdk/client-s3`**
+
+```bash
+pnpm add @aws-sdk/client-s3
+```
+
+- [ ] **Step 1a: Create R2 client helper**
+
+```typescript
+// src/lib/r2.ts
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { env } from "~/env";
+
+const r2Client = new S3Client({
+  region: "auto",
+  endpoint: `https://${env.CLOUDFLARE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    secretAccessKey: env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+  },
+});
+
+/**
+ * Upload a buffer to Cloudflare R2 and return the public URL.
+ */
+export async function uploadToR2(opts: {
+  key: string;
+  body: Buffer;
+  contentType: string;
+}): Promise<string> {
+  await r2Client.send(
+    new PutObjectCommand({
+      Bucket: env.CLOUDFLARE_R2_BUCKET_NAME,
+      Key: opts.key,
+      Body: opts.body,
+      ContentType: opts.contentType,
+    }),
+  );
+
+  // Return the public URL (requires public access on the bucket or a custom domain)
+  return `https://${env.CLOUDFLARE_R2_BUCKET_NAME}.${env.CLOUDFLARE_R2_ACCOUNT_ID}.r2.dev/${opts.key}`;
+}
+```
+
+- [ ] **Step 1b: Create profile router**
 
 ```typescript
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import { uploadToR2 } from "~/lib/r2";
+
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2 MB
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export const profileRouter = createTRPCRouter({
   update: protectedProcedure
@@ -231,16 +286,31 @@ export const profileRouter = createTRPCRouter({
 
   uploadAvatar: protectedProcedure
     .input(z.object({
-      // Base64 data URL for now — replace with S3/R2 presigned URL later
-      dataUrl: z.string().refine(
-        (s) => s.startsWith("data:image/") && s.length < 3_000_000,
-        "Must be an image data URL under 3MB",
+      /** Raw file bytes encoded as base64 (NOT a data URL). */
+      fileBase64: z.string().refine(
+        (s) => {
+          const sizeInBytes = Math.ceil((s.length * 3) / 4);
+          return sizeInBytes <= MAX_AVATAR_SIZE;
+        },
+        "File must be under 2 MB",
       ),
+      /** MIME type of the uploaded file. */
+      contentType: z.enum(ALLOWED_MIME_TYPES),
     }))
     .mutation(async ({ ctx, input }) => {
+      const buffer = Buffer.from(input.fileBase64, "base64");
+      const ext = input.contentType.split("/")[1]; // jpeg | png | webp
+      const key = `avatars/${ctx.userId}/${Date.now()}.${ext}`;
+
+      const avatarUrl = await uploadToR2({
+        key,
+        body: buffer,
+        contentType: input.contentType,
+      });
+
       return ctx.db.user.update({
         where: { id: ctx.userId },
-        data: { avatar: input.dataUrl },
+        data: { avatar: avatarUrl },
       });
     }),
 });
@@ -282,12 +352,22 @@ export default function ProfileSettingsPage() {
       alert("Image must be under 2MB");
       return;
     }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      alert("Only JPEG, PNG, and WebP images are allowed");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result as string;
-      uploadAvatar.mutate({ dataUrl });
+      const arrayBuffer = reader.result as ArrayBuffer;
+      const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ""),
+      );
+      uploadAvatar.mutate({
+        fileBase64: base64,
+        contentType: file.type as "image/jpeg" | "image/png" | "image/webp",
+      });
     };
-    reader.readAsDataURL(file);
+    reader.readAsArrayBuffer(file);
   }
 
   return (
@@ -376,11 +456,31 @@ import { profileRouter } from "~/server/api/routers/profile";
 // Add: profile: profileRouter
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Add R2 env vars to `src/env.js` (or `src/env.ts`)**
+
+Add the following server-side env vars to the env schema:
+
+```typescript
+CLOUDFLARE_R2_ACCOUNT_ID: z.string().min(1),
+CLOUDFLARE_R2_ACCESS_KEY_ID: z.string().min(1),
+CLOUDFLARE_R2_SECRET_ACCESS_KEY: z.string().min(1),
+CLOUDFLARE_R2_BUCKET_NAME: z.string().min(1),
+```
+
+And add them to `runtimeEnv` (if using `@t3-oss/env-nextjs`):
+
+```typescript
+CLOUDFLARE_R2_ACCOUNT_ID: process.env.CLOUDFLARE_R2_ACCOUNT_ID,
+CLOUDFLARE_R2_ACCESS_KEY_ID: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+CLOUDFLARE_R2_SECRET_ACCESS_KEY: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+CLOUDFLARE_R2_BUCKET_NAME: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+```
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/server/api/routers/profile.ts src/app/settings/profile/page.tsx src/server/api/root.ts
-git commit -m "feat: add profile settings page and profile router"
+git add src/server/api/routers/profile.ts src/lib/r2.ts src/app/settings/profile/page.tsx src/server/api/root.ts src/env.js package.json pnpm-lock.yaml
+git commit -m "feat: add profile settings page with Cloudflare R2 avatar upload"
 ```
 
 ---
@@ -595,8 +695,12 @@ git commit -m "feat: add admin page with featured survey management"
 ## Verification Checklist
 
 - [ ] `pnpm typecheck` — no errors
+- [ ] `@aws-sdk/client-s3` is listed in `package.json` dependencies
+- [ ] `CLOUDFLARE_R2_*` env vars are defined in `src/env.js` and `.env`
 - [ ] User profile page renders at `/u/[userId]` with avatar, name, bio, stats, surveys
 - [ ] Profile settings at `/settings/profile` — edit name, bio, upload avatar
+- [ ] Avatar upload sends raw file bytes (base64-encoded) to the server, which uploads to R2 and stores the public URL in `User.avatar`
+- [ ] Uploaded avatar displays correctly on both the settings page and the public profile page
 - [ ] Admin page at `/admin` — search, feature/unfeature, max 6 featured
 - [ ] Admin routes return 404 for non-admin users
 - [ ] User router: getProfile (public), getPublicSurveys (public), getSubscription (protected)

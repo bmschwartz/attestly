@@ -371,7 +371,11 @@ git commit -m "feat: document downgrade behavior in premium utilities"
       plan: z.enum(["FREE", "PREMIUM", "ENTERPRISE"]),
     }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user.isAdmin) {
+      const user = await ctx.db.user.findUnique({
+        where: { id: ctx.userId },
+        select: { isAdmin: true },
+      });
+      if (!user?.isAdmin) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
       return ctx.db.subscription.update({
