@@ -1,14 +1,27 @@
-"use client";
+import { redirect } from "next/navigation";
+import { api, HydrateClient } from "~/trpc/server";
+import { SurveyList } from "./_components/survey-list";
 
-import { AuthGuard } from "~/app/_components/auth-guard";
+export const metadata = {
+  title: "Dashboard | Attestly",
+};
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  // Prefetch data for the dashboard on the server.
+  // If this throws UNAUTHORIZED, the user is not logged in.
+  try {
+    await api.survey.getStats.prefetch();
+    await api.survey.listMine.prefetch({});
+  } catch {
+    redirect("/");
+  }
+
   return (
-    <AuthGuard>
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-4 text-gray-600">Manage your surveys and responses.</p>
-      </div>
-    </AuthGuard>
+    <HydrateClient>
+      <main className="mx-auto max-w-4xl px-4 py-8">
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">Dashboard</h1>
+        <SurveyList />
+      </main>
+    </HydrateClient>
   );
 }
