@@ -432,7 +432,10 @@ export const resultsRouter = createTRPCRouter({
       }
 
       // Access check by resultsVisibility
-      const userId = ctx.session?.user?.id;
+      // NOTE: This is a publicProcedure that needs optional auth. ctx.userId will
+      // be populated if the user is authenticated (via optionalProtectedProcedure or
+      // manual token extraction to be defined in Plan 1b's tRPC context).
+      const userId = ctx.userId;
 
       if (survey.resultsVisibility === "CREATOR") {
         if (!userId || userId !== survey.creatorId) {
@@ -525,7 +528,7 @@ Add this procedure inside the `createTRPCRouter({})` call, after `getBySurvey`:
   getForCreator: protectedProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id;
+      const userId = ctx.userId;
 
       const survey = await ctx.db.survey.findUnique({
         where: { slug: input.slug },
@@ -643,7 +646,9 @@ Add this procedure inside the `createTRPCRouter({})` call, after `getForCreator`
       }
 
       // Same access control as getBySurvey
-      const userId = ctx.session?.user?.id;
+      // NOTE: Same optional auth note as getBySurvey — ctx.userId is populated
+      // when authenticated, null otherwise (requires optional auth middleware from Plan 1b).
+      const userId = ctx.userId;
       const isCreator = userId === survey.creatorId;
 
       if (!isCreator && survey.status !== "CLOSED") {

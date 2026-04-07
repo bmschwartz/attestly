@@ -14,8 +14,8 @@
 
 ## File Structure
 
-- Create: `src/server/api/routers/survey.ts` — survey tRPC router
-- Modify: `src/server/api/root.ts` — register survey router
+- Modify: `src/server/api/routers/survey.ts` — survey router already exists from Plan 2a with `create`, `update`, `getForEdit`, `getBySlug`, `publish`, `deleteDraft`, `listMine`, `getStats`, `close`. All procedures needed by the dashboard already exist; no new procedures are required.
+- Modify: `src/server/api/root.ts` — survey router already registered in Plan 2a; no changes needed here
 - Create: `src/app/dashboard/page.tsx` — dashboard page (server component)
 - Create: `src/app/dashboard/_components/overview-stats.tsx` — stat cards
 - Create: `src/app/dashboard/_components/survey-list-header.tsx` — filters and new survey button
@@ -27,82 +27,23 @@
 
 ---
 
-### Task 1: Create the survey router with getStats procedure
+### Task 1: Verify the survey router already has required procedures
 
 **Files:**
-- Create: `src/server/api/routers/survey.ts`
+- Verify: `src/server/api/routers/survey.ts` (already exists from Plan 2a)
+- Verify: `src/server/api/root.ts` (survey router already registered from Plan 2a)
 
-- [ ] **Step 1: Create the survey router file with getStats**
+- [ ] **Step 1: Verify the survey router has all required procedures**
 
-```bash
-mkdir -p /Users/bmschwartz/Development/attestly/src/server/api/routers
-```
+The survey router was created in Plan 2a and already contains all the procedures needed by the dashboard: `getStats`, `listMine`, `create`, `deleteDraft`, and `close` (plus `update`, `getForEdit`, `getBySlug`, `publish`).
 
-Create `src/server/api/routers/survey.ts`:
+Verify that `src/server/api/routers/survey.ts` exists and contains the `getStats`, `listMine`, `create`, `deleteDraft`, and `close` procedures.
 
-```ts
-import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { TRPCError } from "@trpc/server";
+No new procedures need to be added. If any are missing, refer to Plan 2a for the implementation.
 
-export const surveyRouter = createTRPCRouter({
-  /**
-   * Get overview stats for the authenticated creator.
-   * Returns total surveys, total submitted responses, and active (PUBLISHED) count.
-   */
-  getStats: protectedProcedure.query(async ({ ctx }) => {
-    const [totalSurveys, activeSurveys, totalResponses] = await Promise.all([
-      ctx.db.survey.count({
-        where: { creatorId: ctx.userId },
-      }),
-      ctx.db.survey.count({
-        where: { creatorId: ctx.userId, status: "PUBLISHED" },
-      }),
-      ctx.db.response.count({
-        where: {
-          survey: { creatorId: ctx.userId },
-          status: "SUBMITTED",
-          deletedAt: null,
-        },
-      }),
-    ]);
+- [ ] **Step 2: Verify the survey router is registered in root.ts**
 
-    return {
-      totalSurveys,
-      totalResponses,
-      activeSurveys,
-    };
-  }),
-});
-```
-
-- [ ] **Step 2: Register the survey router in root.ts**
-
-Replace the entire contents of `src/server/api/root.ts` with:
-
-```ts
-import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
-import { healthRouter } from "~/server/api/routers/health";
-import { surveyRouter } from "~/server/api/routers/survey";
-
-/**
- * This is the primary router for your server.
- *
- * All routers added in /api/routers should be manually added here.
- */
-export const appRouter = createTRPCRouter({
-  health: healthRouter,
-  survey: surveyRouter,
-});
-
-// export type definition of API
-export type AppRouter = typeof appRouter;
-
-/**
- * Create a server-side caller for the tRPC API.
- */
-export const createCaller = createCallerFactory(appRouter);
-```
+Verify that `src/server/api/root.ts` imports and registers the survey router alongside any other existing routers. Do NOT replace the entire file.
 
 - [ ] **Step 3: Verify TypeScript compiles**
 
@@ -110,335 +51,23 @@ export const createCaller = createCallerFactory(appRouter);
 cd /Users/bmschwartz/Development/attestly && SKIP_ENV_VALIDATION=1 pnpm typecheck
 ```
 
-- [ ] **Step 4: Commit**
+---
 
-```bash
-cd /Users/bmschwartz/Development/attestly
-git add src/server/api/routers/survey.ts src/server/api/root.ts
-git commit -m "feat: add survey router with getStats procedure"
-```
+### Task 2: (Skipped) Survey procedures already exist from Plan 2a
+
+The following procedures needed by the dashboard already exist in the survey router from Plan 2a:
+
+- `getStats` — overview stats for the creator
+- `listMine` — list creator's surveys with filtering and sorting (note: Plan 2a's version uses cursor pagination; the dashboard components should use the `status` and `sort` input fields from Plan 2a's implementation)
+- `create` — create a new draft survey (with free tier limit enforcement)
+- `deleteDraft` — hard delete a draft survey
+- `close` — close a published survey (with soft-delete of in-progress responses and email notifications)
+
+No new procedures need to be added. Proceed directly to building the dashboard UI components.
 
 ---
 
-### Task 2: Add survey.listMine procedure
-
-**Files:**
-- Modify: `src/server/api/routers/survey.ts`
-
-- [ ] **Step 1: Add listMine procedure to the survey router**
-
-Add the following procedure inside the `createTRPCRouter({})` call in `src/server/api/routers/survey.ts`, after the `getStats` procedure:
-
-```ts
-  /**
-   * List all surveys for the authenticated creator with response counts.
-   * Supports status filtering and sorting.
-   */
-  listMine: protectedProcedure
-    .input(
-      z.object({
-        status: z.enum(["ALL", "DRAFT", "PUBLISHED", "CLOSED"]).default("ALL"),
-        sort: z
-          .enum(["newest", "oldest", "most_responses", "alphabetical"])
-          .default("newest"),
-      }),
-    )
-    .query(async ({ ctx, input }) => {
-      const where: Record<string, unknown> = { creatorId: ctx.userId };
-      if (input.status !== "ALL") {
-        where.status = input.status;
-      }
-
-      const orderBy = (() => {
-        switch (input.sort) {
-          case "newest":
-            return { createdAt: "desc" as const };
-          case "oldest":
-            return { createdAt: "asc" as const };
-          case "alphabetical":
-            return { title: "asc" as const };
-          case "most_responses":
-            return { createdAt: "desc" as const }; // fallback, we sort in-memory below
-        }
-      })();
-
-      const surveys = await ctx.db.survey.findMany({
-        where,
-        orderBy,
-        include: {
-          questions: {
-            select: { id: true },
-          },
-          _count: {
-            select: {
-              responses: {
-                where: { status: "SUBMITTED", deletedAt: null },
-              },
-            },
-          },
-          invites: {
-            select: { id: true, type: true },
-          },
-        },
-      });
-
-      const result = surveys.map((s) => ({
-        id: s.id,
-        title: s.title,
-        slug: s.slug,
-        status: s.status,
-        accessMode: s.accessMode,
-        isPrivate: s.isPrivate,
-        questionCount: s.questions.length,
-        responseCount: s._count.responses,
-        inviteCount: s.invites.length,
-        hasEmailInvites: s.invites.some((i) => i.type === "EMAIL"),
-        createdAt: s.createdAt,
-        publishedAt: s.publishedAt,
-        closedAt: s.closedAt,
-      }));
-
-      // Sort by response count in-memory if needed (Prisma can't order by _count easily)
-      if (input.sort === "most_responses") {
-        result.sort((a, b) => b.responseCount - a.responseCount);
-      }
-
-      return result;
-    }),
-```
-
-- [ ] **Step 2: Verify TypeScript compiles**
-
-```bash
-cd /Users/bmschwartz/Development/attestly && SKIP_ENV_VALIDATION=1 pnpm typecheck
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-cd /Users/bmschwartz/Development/attestly
-git add src/server/api/routers/survey.ts
-git commit -m "feat: add survey.listMine procedure with filtering and sorting"
-```
-
----
-
-### Task 3: Add survey.create, survey.deleteDraft, and survey.close procedures
-
-**Files:**
-- Modify: `src/server/api/routers/survey.ts`
-
-- [ ] **Step 1: Add a slug generation helper at the top of the file**
-
-Add this helper function after the imports in `src/server/api/routers/survey.ts`:
-
-```ts
-/**
- * Generate a URL-friendly slug from a title with a random suffix.
- * Example: "My Survey" -> "my-survey-x7k2"
- */
-function generateSlug(title: string): string {
-  const base = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40);
-  const suffix = Math.random().toString(36).slice(2, 6);
-  return `${base}-${suffix}`;
-}
-
-/** Free tier survey limit */
-const FREE_SURVEY_LIMIT = 5;
-```
-
-- [ ] **Step 2: Add create procedure**
-
-Add inside the `createTRPCRouter({})` call:
-
-```ts
-  /**
-   * Create a new draft survey. Enforces free tier limit of 5 surveys.
-   */
-  create: protectedProcedure.mutation(async ({ ctx }) => {
-    // Check free tier limit
-    const subscription = await ctx.db.subscription.findUnique({
-      where: { userId: ctx.userId },
-      select: { plan: true, status: true },
-    });
-
-    const isPremium =
-      subscription &&
-      subscription.plan !== "FREE" &&
-      subscription.status === "ACTIVE";
-
-    if (!isPremium) {
-      const surveyCount = await ctx.db.survey.count({
-        where: { creatorId: ctx.userId },
-      });
-      if (surveyCount >= FREE_SURVEY_LIMIT) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: `You've reached the free plan limit of ${FREE_SURVEY_LIMIT} surveys. Upgrade for unlimited.`,
-        });
-      }
-    }
-
-    const title = "Untitled Survey";
-    const slug = generateSlug(title);
-
-    const survey = await ctx.db.survey.create({
-      data: {
-        creatorId: ctx.userId,
-        title,
-        description: "",
-        slug,
-        status: "DRAFT",
-        categories: [],
-        tags: [],
-      },
-      select: { id: true, slug: true },
-    });
-
-    return survey;
-  }),
-```
-
-- [ ] **Step 3: Add deleteDraft procedure**
-
-Add inside the `createTRPCRouter({})` call:
-
-```ts
-  /**
-   * Hard delete a draft survey. Only DRAFT status surveys can be deleted.
-   */
-  deleteDraft: protectedProcedure
-    .input(z.object({ surveyId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      const survey = await ctx.db.survey.findUnique({
-        where: { id: input.surveyId },
-        select: { creatorId: true, status: true },
-      });
-
-      if (!survey) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
-      }
-      if (survey.creatorId !== ctx.userId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Not your survey" });
-      }
-      if (survey.status !== "DRAFT") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Only draft surveys can be deleted",
-        });
-      }
-
-      await ctx.db.survey.delete({ where: { id: input.surveyId } });
-
-      return { success: true };
-    }),
-```
-
-- [ ] **Step 4: Add close procedure**
-
-Add inside the `createTRPCRouter({})` call:
-
-```ts
-  /**
-   * Close a published survey. Sets status to CLOSED, soft-deletes in-progress responses,
-   * and queues email notification jobs.
-   */
-  close: protectedProcedure
-    .input(z.object({ surveyId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      const survey = await ctx.db.survey.findUnique({
-        where: { id: input.surveyId },
-        select: { id: true, creatorId: true, status: true, title: true },
-      });
-
-      if (!survey) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
-      }
-      if (survey.creatorId !== ctx.userId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Not your survey" });
-      }
-      if (survey.status !== "PUBLISHED") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Only published surveys can be closed",
-        });
-      }
-
-      const now = new Date();
-
-      await ctx.db.$transaction(async (tx) => {
-        // 1. Set survey status to CLOSED
-        await tx.survey.update({
-          where: { id: input.surveyId },
-          data: { status: "CLOSED", closedAt: now },
-        });
-
-        // 2. Soft-delete all IN_PROGRESS responses
-        await tx.response.updateMany({
-          where: {
-            surveyId: input.surveyId,
-            status: "IN_PROGRESS",
-            deletedAt: null,
-          },
-          data: { deletedAt: now },
-        });
-
-        // 3. Queue email notification jobs for respondents with email on file
-        const respondents = await tx.response.findMany({
-          where: {
-            surveyId: input.surveyId,
-            status: "SUBMITTED",
-            deletedAt: null,
-          },
-          select: {
-            respondent: {
-              select: { email: true },
-            },
-          },
-        });
-
-        const emailJobs = respondents
-          .filter((r) => r.respondent.email)
-          .map((r) => ({
-            type: "SEND_EMAIL" as const,
-            surveyId: input.surveyId,
-            payload: {
-              to: r.respondent.email,
-              template: "survey_closed",
-              surveyTitle: survey.title,
-            },
-          }));
-
-        if (emailJobs.length > 0) {
-          await tx.backgroundJob.createMany({ data: emailJobs });
-        }
-      });
-
-      return { success: true };
-    }),
-```
-
-- [ ] **Step 5: Verify TypeScript compiles**
-
-```bash
-cd /Users/bmschwartz/Development/attestly && SKIP_ENV_VALIDATION=1 pnpm typecheck
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-cd /Users/bmschwartz/Development/attestly
-git add src/server/api/routers/survey.ts
-git commit -m "feat: add survey.create, survey.deleteDraft, and survey.close procedures"
-```
-
----
-
-### Task 4: Create the OverviewStats component
+### Task 3: Create the OverviewStats component
 
 **Files:**
 - Create: `src/app/dashboard/_components/overview-stats.tsx`
@@ -516,7 +145,7 @@ git commit -m "feat: create OverviewStats component with stat cards"
 
 ---
 
-### Task 5: Create the SurveyListHeader component
+### Task 4: Create the SurveyListHeader component
 
 **Files:**
 - Create: `src/app/dashboard/_components/survey-list-header.tsx`
@@ -638,7 +267,7 @@ git commit -m "feat: create SurveyListHeader with status filters, sort, and new 
 
 ---
 
-### Task 6: Create the SurveyCard component
+### Task 5: Create the SurveyCard component
 
 **Files:**
 - Create: `src/app/dashboard/_components/survey-card.tsx`
@@ -847,7 +476,7 @@ git commit -m "feat: create SurveyCard component with status-specific layouts an
 
 ---
 
-### Task 7: Create the confirmation dialog components
+### Task 6: Create the confirmation dialog components
 
 **Files:**
 - Create: `src/app/dashboard/_components/delete-draft-dialog.tsx`
@@ -986,7 +615,7 @@ git commit -m "feat: create DeleteDraftDialog and CloseSurveyDialog components"
 
 ---
 
-### Task 8: Create the EmptyState component
+### Task 7: Create the EmptyState component
 
 **Files:**
 - Create: `src/app/dashboard/_components/empty-state.tsx`
@@ -1042,7 +671,7 @@ git commit -m "feat: create EmptyState component for empty dashboard"
 
 ---
 
-### Task 9: Create the SurveyList component
+### Task 8: Create the SurveyList component
 
 **Files:**
 - Create: `src/app/dashboard/_components/survey-list.tsx`
@@ -1129,7 +758,7 @@ git commit -m "feat: create SurveyList component with filtering and sorting"
 
 ---
 
-### Task 10: Create the DashboardPage
+### Task 9: Create the DashboardPage
 
 **Files:**
 - Create: `src/app/dashboard/page.tsx`
@@ -1194,8 +823,8 @@ After completing all tasks, verify:
 
 - [ ] `SKIP_ENV_VALIDATION=1 pnpm typecheck` — no TypeScript errors
 - [ ] `pnpm lint` — no lint errors
-- [ ] Survey router has 5 procedures: `getStats`, `listMine`, `create`, `deleteDraft`, `close`
-- [ ] Survey router is registered in `src/server/api/root.ts`
+- [ ] Survey router (from Plan 2a) has all required procedures: `getStats`, `listMine`, `create`, `deleteDraft`, `close`
+- [ ] Survey router is registered in `src/server/api/root.ts` (from Plan 2a)
 - [ ] `/dashboard` page exists and renders server-side
 - [ ] OverviewStats shows 3 stat cards
 - [ ] SurveyListHeader has status filter tabs and sort dropdown

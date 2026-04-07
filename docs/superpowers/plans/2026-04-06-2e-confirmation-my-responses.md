@@ -16,36 +16,28 @@
 
 ## File Structure
 
-- Create: `src/server/api/routers/response.ts` — response router with `getConfirmation` and `listMine` procedures
-- Modify: `src/server/api/root.ts` — register response router
+- Modify: `src/server/api/routers/response.ts` — add `getConfirmation` and `listMine` procedures to existing response router (created in Plan 2d with `start`, `saveAnswer`, `submit`, `clear`)
+- Modify: `src/server/api/root.ts` — response router already registered in Plan 2d; no changes needed here unless it was not registered
 - Create: `src/app/s/[slug]/confirmation/page.tsx` — confirmation page
 - Create: `src/app/my-responses/page.tsx` — my responses list page
 - Create: `src/app/_components/response-card.tsx` — reusable response card component
 
 ---
 
-### Task 1: Create the response router with `getConfirmation` procedure
+### Task 1: Add `getConfirmation` procedure to the existing response router
 
 **Files:**
-- Create: `src/server/api/routers/response.ts`
+- Modify: `src/server/api/routers/response.ts` (already exists from Plan 2d with `start`, `saveAnswer`, `submit`, `clear`)
 
-- [ ] **Step 1: Create the response router file with `getConfirmation`**
+- [ ] **Step 1: Add `getConfirmation` to the existing response router**
 
-Create `src/server/api/routers/response.ts`:
+Add the following procedure inside the existing `createTRPCRouter({})` call in `src/server/api/routers/response.ts`, after the existing procedures:
 
 ```typescript
-import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import {
-  createTRPCRouter,
-  protectedProcedure,
-} from "~/server/api/trpc";
-
-export const responseRouter = createTRPCRouter({
   getConfirmation: protectedProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id;
+      const userId = ctx.userId;
 
       const survey = await ctx.db.survey.findUnique({
         where: { slug: input.slug },
@@ -112,7 +104,6 @@ export const responseRouter = createTRPCRouter({
         respondentEmail: user?.email ?? null,
       };
     }),
-});
 ```
 
 - [ ] **Step 2: Verify the file compiles**
@@ -124,7 +115,7 @@ Expected: no errors related to `response.ts`
 
 ```bash
 git add src/server/api/routers/response.ts
-git commit -m "feat: add response router with getConfirmation procedure"
+git commit -m "feat: add getConfirmation procedure to response router"
 ```
 
 ---
@@ -140,7 +131,7 @@ Add this procedure inside the `createTRPCRouter({})` call, after `getConfirmatio
 
 ```typescript
   listMine: protectedProcedure.query(async ({ ctx }) => {
-    const userId = ctx.session.user.id;
+    const userId = ctx.userId;
 
     const responses = await ctx.db.response.findMany({
       where: {
@@ -185,7 +176,7 @@ Add this procedure inside the `createTRPCRouter({})` call, after `getConfirmatio
   }),
 ```
 
-The full file `src/server/api/routers/response.ts` should now contain both `getConfirmation` and `listMine`.
+The full file `src/server/api/routers/response.ts` should now contain all six procedures: `start`, `saveAnswer`, `submit`, `clear` (from Plan 2d), and `getConfirmation`, `listMine` (added in this plan).
 
 - [ ] **Step 2: Verify the file compiles**
 
@@ -201,46 +192,29 @@ git commit -m "feat: add listMine procedure to response router"
 
 ---
 
-### Task 3: Register the response router in root.ts
+### Task 3: Verify the response router is registered in root.ts
 
 **Files:**
-- Modify: `src/server/api/root.ts`
+- Modify: `src/server/api/root.ts` (only if needed)
 
-- [ ] **Step 1: Import and register the response router**
+- [ ] **Step 1: Verify the response router is already registered**
 
-Replace the contents of `src/server/api/root.ts` with:
+The response router should already be imported and registered in `src/server/api/root.ts` from Plan 2d. Verify that the file contains:
 
 ```typescript
-import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 import { responseRouter } from "~/server/api/routers/response";
-
-/**
- * This is the primary router for your server.
- *
- * All routers added in /api/routers should be manually added here.
- */
-export const appRouter = createTRPCRouter({
-  response: responseRouter,
-});
-
-// export type definition of API
-export type AppRouter = typeof appRouter;
-
-/**
- * Create a server-side caller for the tRPC API.
- * @example
- * const trpc = createCaller(createContext);
- * const res = await trpc.response.getConfirmation({ slug: "my-survey" });
- */
-export const createCaller = createCallerFactory(appRouter);
 ```
+
+and that `response: responseRouter` is included in the `createTRPCRouter({})` call alongside any other existing routers (e.g., `survey: surveyRouter` from Plan 2a).
+
+If the response router is not yet registered, add the import and register it **alongside the existing routers** — do NOT replace the entire file.
 
 - [ ] **Step 2: Verify the file compiles**
 
 Run: `cd /Users/bmschwartz/Development/attestly && pnpm typecheck`
 Expected: no errors
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Commit (only if changes were needed)**
 
 ```bash
 git add src/server/api/root.ts
@@ -713,8 +687,8 @@ After completing all tasks, verify:
 
 - [ ] `pnpm typecheck` passes with no errors
 - [ ] `pnpm lint` passes with no errors
-- [ ] `src/server/api/routers/response.ts` contains `getConfirmation` and `listMine` procedures
-- [ ] `src/server/api/root.ts` registers the `response` router
+- [ ] `src/server/api/routers/response.ts` contains `start`, `saveAnswer`, `submit`, `clear` (from Plan 2d) plus `getConfirmation` and `listMine` (added in this plan)
+- [ ] `src/server/api/root.ts` registers the `response` router alongside existing routers
 - [ ] `/s/[slug]/confirmation` page renders success message, survey title, verification proof, results notice, and email notice
 - [ ] `/my-responses` page renders a list of ResponseCard components sorted by most recent
 - [ ] ResponseCard shows survey title, submitted date, status badge, and appropriate link

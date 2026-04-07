@@ -43,15 +43,15 @@ In `src/env.js`, add `RESEND_API_KEY` to the server schema and runtimeEnv. The f
 
 ```js
   server: {
-    AUTH_SECRET:
-      process.env.NODE_ENV === "production"
-        ? z.string()
-        : z.string().optional(),
+    PRIVY_APP_SECRET: z.string().min(1),
     DATABASE_URL: z.string().url(),
     RESEND_API_KEY: z.string().min(1),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
+  },
+  client: {
+    NEXT_PUBLIC_PRIVY_APP_ID: z.string().min(1),
   },
 ```
 
@@ -310,7 +310,7 @@ export const inviteRouter = createTRPCRouter({
   list: protectedProcedure
     .input(z.object({ surveyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      await verifyCreatorOwnership(ctx.db, input.surveyId, ctx.session.user.id);
+      await verifyCreatorOwnership(ctx.db, input.surveyId, ctx.userId);
 
       const invites = await ctx.db.surveyInvite.findMany({
         where: { surveyId: input.surveyId },
@@ -379,7 +379,7 @@ Add inside the `createTRPCRouter({})` call in `src/server/api/routers/invite.ts`
       const survey = await verifyCreatorOwnership(
         ctx.db,
         input.surveyId,
-        ctx.session.user.id,
+        ctx.userId,
       );
 
       if (survey.accessMode !== "INVITE_ONLY") {
@@ -529,7 +529,7 @@ Add inside the `createTRPCRouter({})` call in `src/server/api/routers/invite.ts`
         throw new TRPCError({ code: "NOT_FOUND", message: "Invite not found" });
       }
 
-      if (invite.survey.creatorId !== ctx.session.user.id) {
+      if (invite.survey.creatorId !== ctx.userId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Not your survey" });
       }
 
@@ -577,7 +577,7 @@ Add inside the `createTRPCRouter({})` call in `src/server/api/routers/invite.ts`
     .query(async ({ ctx, input }) => {
       // Get the user's email
       const user = await ctx.db.user.findUnique({
-        where: { id: ctx.session.user.id },
+        where: { id: ctx.userId },
         select: { email: true },
       });
 
@@ -653,7 +653,7 @@ Add inside the `createTRPCRouter({})` call in `src/server/api/routers/invite.ts`
   getProgress: protectedProcedure
     .input(z.object({ surveyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      await verifyCreatorOwnership(ctx.db, input.surveyId, ctx.session.user.id);
+      await verifyCreatorOwnership(ctx.db, input.surveyId, ctx.userId);
 
       // Count total EMAIL invites
       const totalEmailInvites = await ctx.db.surveyInvite.count({

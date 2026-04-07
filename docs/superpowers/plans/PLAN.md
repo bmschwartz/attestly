@@ -1,6 +1,6 @@
 # Attestly Phase 1 — Implementation Plans
 
-> For design specifications, see [docs/superpowers/specs/INDEX.md](../specs/INDEX.md)
+> For design specifications, see [docs/superpowers/specs/PLAN.md](../specs/PLAN.md)
 
 ## Overview
 

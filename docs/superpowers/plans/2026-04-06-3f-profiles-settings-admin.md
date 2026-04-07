@@ -399,9 +399,17 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 
-function assertAdmin(isAdmin: boolean) {
-  if (!isAdmin) {
-    throw new TRPCError({ code: "NOT_FOUND" }); // 404, not 403 — don't reveal admin routes exist
+/**
+ * Assert the current user is an admin by fetching the isAdmin flag from the database.
+ * Throws NOT_FOUND (not FORBIDDEN) to avoid revealing admin routes exist.
+ */
+async function assertAdmin(ctx: { db: PrismaClient; userId: string }) {
+  const user = await ctx.db.user.findUnique({
+    where: { id: ctx.userId },
+    select: { isAdmin: true },
+  });
+  if (!user?.isAdmin) {
+    throw new TRPCError({ code: "NOT_FOUND" });
   }
 }
 
@@ -409,7 +417,7 @@ export const adminRouter = createTRPCRouter({
   searchSurveys: protectedProcedure
     .input(z.object({ query: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      assertAdmin(ctx.user.isAdmin);
+      await assertAdmin(ctx);
       return ctx.db.survey.findMany({
         where: {
           status: "PUBLISHED",
@@ -425,7 +433,7 @@ export const adminRouter = createTRPCRouter({
   featureSurvey: protectedProcedure
     .input(z.object({ surveyId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      assertAdmin(ctx.user.isAdmin);
+      await assertAdmin(ctx);
       const featuredCount = await ctx.db.survey.count({
         where: { featuredAt: { not: null } },
       });
@@ -441,7 +449,7 @@ export const adminRouter = createTRPCRouter({
   unfeatureSurvey: protectedProcedure
     .input(z.object({ surveyId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      assertAdmin(ctx.user.isAdmin);
+      await assertAdmin(ctx);
       return ctx.db.survey.update({
         where: { id: input.surveyId },
         data: { featuredAt: null, featuredOrder: null },
@@ -453,7 +461,7 @@ export const adminRouter = createTRPCRouter({
       surveyIds: z.array(z.string().uuid()),
     }))
     .mutation(async ({ ctx, input }) => {
-      assertAdmin(ctx.user.isAdmin);
+      await assertAdmin(ctx);
       await ctx.db.$transaction(
         input.surveyIds.map((id, index) =>
           ctx.db.survey.update({
@@ -471,7 +479,7 @@ export const adminRouter = createTRPCRouter({
       plan: z.enum(["FREE", "PREMIUM", "ENTERPRISE"]),
     }))
     .mutation(async ({ ctx, input }) => {
-      assertAdmin(ctx.user.isAdmin);
+      await assertAdmin(ctx);
       return ctx.db.subscription.update({
         where: { userId: input.userId },
         data: { plan: input.plan },

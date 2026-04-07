@@ -116,17 +116,10 @@ export const exploreRouter = createTRPCRouter({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const where = {
+      const baseWhere = {
         status: "PUBLISHED" as const,
         isPrivate: false,
         accessMode: "OPEN" as const,
-        ...(input.categories?.length
-          ? {
-              categories: {
-                array_contains: input.categories,
-              },
-            }
-          : {}),
       };
 
       const orderBy =
@@ -136,19 +129,28 @@ export const exploreRouter = createTRPCRouter({
             ? undefined // handled below
             : { publishedAt: "desc" as const }; // trending fallback
 
-      const surveys = await ctx.db.survey.findMany({
-        where,
+      // Filter categories in application code since Prisma doesn't support
+      // array_contains on Json columns for PostgreSQL
+      const allSurveys = await ctx.db.survey.findMany({
+        where: baseWhere,
         include: {
           creator: { select: { id: true, displayName: true, walletAddress: true } },
           _count: { select: { responses: { where: { status: "SUBMITTED", deletedAt: null } } } },
         },
         orderBy: orderBy ? orderBy : undefined,
-        take: input.limit + 1,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
       });
 
-      const hasMore = surveys.length > input.limit;
-      const items = hasMore ? surveys.slice(0, -1) : surveys;
+      const filtered = input.categories?.length
+        ? allSurveys.filter((s) => {
+            const cats = (s.categories as string[]) ?? [];
+            return input.categories!.some((c) => cats.includes(c));
+          })
+        : allSurveys;
+
+      const paginated = filtered.slice(0, input.limit + 1);
+      const hasMore = paginated.length > input.limit;
+      const items = hasMore ? paginated.slice(0, -1) : paginated;
       const nextCursor = hasMore ? items[items.length - 1]?.id : undefined;
 
       // Sort by response count if needed

@@ -14,7 +14,7 @@ AI Insights is a premium feature that adds LLM-powered analysis to survey result
 
 ### When Generated
 
-- **On survey close:** a `GENERATE_AI_SUMMARY` BackgroundJob is queued when the creator closes a survey. The job runs asynchronously — calls the Claude API for the top-level summary and each free-text question summary, writes results to the AiSummary table. LLM calls can take 10-30+ seconds per summary, so this must not block the close mutation.
+- **On survey close:** a `GENERATE_AI_SUMMARY` BackgroundJob is queued when the creator closes a survey. The job runs asynchronously — calls the Gemini API for the top-level summary and each free-text question summary, writes results to the AiSummary table. LLM calls can take 10-30+ seconds per summary, so this must not block the close mutation.
 - **Job chaining:** `survey.close` mutation → queues `CLOSE_SURVEY` job (blockchain, Phase 2+) + `SEND_EMAIL` jobs (notifications) + `GENERATE_AI_SUMMARY` job (if premium)
 - **Results page UX while generating:** shows "Generating AI summary..." placeholder with a spinner where the summary will appear. Auto-refreshes or polls until the job completes and the AiSummary record is created.
 - **On demand:** creator can regenerate any summary with an optional focus prompt ("Focus on negative sentiment", "Highlight themes about remote work"). Regeneration also queued as a `GENERATE_AI_SUMMARY` job.
@@ -242,7 +242,7 @@ Accessible from the creator dashboard. Route: `/dashboard/insights`.
 
 ### Provider
 
-Use the Claude API (Anthropic) for summary generation and chat.
+Use the Gemini API (provider-agnostic, Gemini Flash-Lite for summaries, Gemini Flash for chat).
 
 ### Implementation
 

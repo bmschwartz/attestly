@@ -19,6 +19,36 @@
 
 ---
 
+### Task 0: Fix datasource block to include DATABASE_URL
+
+**Files:**
+- Modify: `prisma/schema.prisma`
+
+- [ ] **Step 1: Update the datasource block to include the connection URL**
+
+The current `datasource db` block is missing the `url` field. Update it to:
+
+```prisma
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+```
+
+- [ ] **Step 2: Verify the schema parses**
+
+Run: `cd /Users/bmschwartz/Development/attestly && pnpm prisma format`
+Expected: schema is formatted without errors
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add prisma/schema.prisma
+git commit -m "fix: add DATABASE_URL to datasource block in Prisma schema"
+```
+
+---
+
 ### Task 1: Add all enums
 
 **Files:**

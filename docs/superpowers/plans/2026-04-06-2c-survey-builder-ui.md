@@ -279,30 +279,21 @@ git commit -m "feat: add survey builder constants and publish validation"
 Create `src/app/surveys/[id]/edit/page.tsx`:
 
 ```typescript
-import { redirect, notFound } from "next/navigation";
-import { auth } from "~/server/auth";
+import { notFound, redirect } from "next/navigation";
 import { api } from "~/trpc/server";
 import { SurveyBuilderClient } from "./_components/SurveyBuilderClient";
+
+// Auth handled by AuthGuard component from Plan 1c
 
 export default async function SurveyBuilderPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) {
-    redirect("/api/auth/signin");
-  }
-
   const { id } = await params;
 
   const survey = await api.survey.getForEdit({ id });
   if (!survey) {
-    notFound();
-  }
-
-  // Creator-only access
-  if (survey.creatorId !== session.user.id) {
     notFound();
   }
 

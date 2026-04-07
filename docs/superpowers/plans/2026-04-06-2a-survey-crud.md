@@ -4,7 +4,7 @@
 
 **Goal:** Implement tRPC routers for survey create, update, publish, delete, get, list, stats, and close operations.
 
-**Architecture:** A single `surveyRouter` in `src/server/api/routers/survey.ts` exposes all survey-level tRPC procedures. All mutations use Zod input validation. Protected procedures use `ctx.session.user.id` as the creator identity. Creator-ownership is enforced at the query level for edit/delete operations. Publish validation mirrors the client-side rules as a server-side gate.
+**Architecture:** A single `surveyRouter` in `src/server/api/routers/survey.ts` exposes all survey-level tRPC procedures. All mutations use Zod input validation. Protected procedures use `ctx.userId` as the creator identity. Creator-ownership is enforced at the query level for edit/delete operations. Publish validation mirrors the client-side rules as a server-side gate.
 
 **Tech Stack:** tRPC v11, Zod v4, Prisma 7, PostgreSQL, Vitest
 
@@ -152,7 +152,7 @@ export const surveyRouter = createTRPCRouter({
 
       const survey = await ctx.db.survey.create({
         data: {
-          creatorId: ctx.session.user.id,
+          creatorId: ctx.userId,
           title: input.title,
           description: "",
           slug,
@@ -225,7 +225,7 @@ Add after the `create` procedure inside the `createTRPCRouter({})` call in `src/
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
 
-      if (survey.creatorId !== ctx.session.user.id) {
+      if (survey.creatorId !== ctx.userId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Not the survey creator" });
       }
 
@@ -291,7 +291,7 @@ Add to the router in `src/server/api/routers/survey.ts`:
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
 
-      if (survey.creatorId !== ctx.session.user.id) {
+      if (survey.creatorId !== ctx.userId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Not the survey creator" });
       }
 
@@ -404,7 +404,7 @@ Add to the router in `src/server/api/routers/survey.ts`:
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
 
-      if (survey.creatorId !== ctx.session.user.id) {
+      if (survey.creatorId !== ctx.userId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Not the survey creator" });
       }
 
@@ -569,7 +569,7 @@ Add to the router in `src/server/api/routers/survey.ts`:
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
 
-      if (survey.creatorId !== ctx.session.user.id) {
+      if (survey.creatorId !== ctx.userId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Not the survey creator" });
       }
 
@@ -624,7 +624,7 @@ Add to the router in `src/server/api/routers/survey.ts`:
     .query(async ({ ctx, input }) => {
       const surveys = await ctx.db.survey.findMany({
         where: {
-          creatorId: ctx.session.user.id,
+          creatorId: ctx.userId,
           ...(input.status ? { status: input.status } : {}),
         },
         include: {
@@ -685,7 +685,7 @@ Add to the router in `src/server/api/routers/survey.ts`:
 
 ```typescript
   getStats: protectedProcedure.query(async ({ ctx }) => {
-    const userId = ctx.session.user.id;
+    const userId = ctx.userId;
 
     const [totalSurveys, totalResponses, activeSurveys] = await Promise.all([
       ctx.db.survey.count({
@@ -747,7 +747,7 @@ Add to the router in `src/server/api/routers/survey.ts`:
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
 
-      if (survey.creatorId !== ctx.session.user.id) {
+      if (survey.creatorId !== ctx.userId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Not the survey creator" });
       }
 
@@ -891,10 +891,8 @@ function createAuthenticatedCaller(userId = "user-1") {
   const createCaller = createCallerFactory(appRouter);
   return createCaller({
     db: mockPrisma as any,
-    session: {
-      user: { id: userId, name: "Test User", email: "test@test.com" },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    },
+    userId,
+    walletAddress: "0xTestWallet",
     headers: new Headers(),
   });
 }
@@ -903,7 +901,8 @@ function createUnauthenticatedCaller() {
   const createCaller = createCallerFactory(appRouter);
   return createCaller({
     db: mockPrisma as any,
-    session: null,
+    userId: null,
+    walletAddress: null,
     headers: new Headers(),
   });
 }
