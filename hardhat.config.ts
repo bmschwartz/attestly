@@ -11,6 +11,7 @@ const config = defineConfig({
         runs: 200,
       },
       evmVersion: "cancun",
+      viaIR: true,
     },
   },
   networks: {
