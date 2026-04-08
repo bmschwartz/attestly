@@ -108,7 +108,8 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
 
   const surveyHash = hashSurvey(surveyMessage);
 
-  // Update status to PENDING
+  // Survey is already in PUBLISHING status (set by survey.publish tRPC procedure).
+  // Update contentHash early so it's available if the job fails and restarts.
   await db.survey.update({
     where: { id: surveyId },
     data: {
@@ -166,6 +167,7 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
     data: {
       contentHash: surveyHash,
       ipfsCid,
+      status: "PUBLISHED", // PUBLISHING → PUBLISHED (survey goes live)
       publishTxHash: txHash,
       publishBlockNumber: receipt.blockNumber.toString(),
       publishBlockTimestamp: new Date(Number(receipt.timestamp) * 1000),
@@ -182,8 +184,10 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
 Key notes:
 - The `signature` comes from the client-side signing (done when the user clicks "Publish"). It's stored in the job payload.
 - Survey fields are mapped from the Prisma model to the EIP-712 SurveyMessage format. The mapping handles the question options (stored as separate records in Prisma, flattened to string arrays for EIP-712).
-- `verificationStatus` transitions: NONE -> PENDING (after hash computed) -> VERIFIED (after tx confirmed). If the job fails, the status stays PENDING and the job retries.
+- **Status transitions:** `PUBLISHING → PUBLISHED` (on success). The survey.publish tRPC procedure sets `DRAFT → PUBLISHING`. The handler completes the transition. If the job permanently fails (all retries exhausted), the survey stays in `PUBLISHING` and a `SEND_EMAIL` job is enqueued to notify the creator with a "Retry publishing" link.
+- `verificationStatus` transitions: NONE -> PENDING (after hash computed) -> VERIFIED (after tx confirmed).
 - The `minRating`, `maxRating`, and `maxLength` fields default to 0 if null (matching the EIP-712 uint type defaults).
+- **Failure notification:** When the worker marks this job FAILED (retries exhausted), it should enqueue a `SEND_EMAIL` job with payload `{ type: "PUBLISH_FAILED", surveyId, userId: survey.creatorId }`. The email template should explain that publishing failed and provide a link to retry (re-sign and re-enqueue). The survey remains in `PUBLISHING` status until the creator retries or manually reverts to `DRAFT`.
 
 - [ ] **Step 2: Verify TypeScript compiles**
 
@@ -302,7 +306,8 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
     surveyHash as `0x${string}`,
   );
 
-  // Update status to PENDING
+  // Response is already in SUBMITTING status (set by response.submit tRPC procedure).
+  // Update blindedId early so it's available if the job fails and restarts.
   await db.response.update({
     where: { id: responseId },
     data: {
@@ -362,6 +367,7 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
     data: {
       blindedId,
       ipfsCid,
+      status: "SUBMITTED", // SUBMITTING → SUBMITTED (response fully on-chain)
       submitTxHash: txHash,
       submitBlockNumber: receipt.blockNumber.toString(),
       submitBlockTimestamp: new Date(Number(receipt.timestamp) * 1000),
@@ -702,7 +708,13 @@ registerHandler("GENERATE_AI_SUMMARY", async (job) => {
 
 - [ ] **Step 1b: Add schema migration for new fields**
 
-The following fields must be added to the Prisma schema before running:
+The following changes must be made to the Prisma schema before running:
+
+**Enum additions:**
+- `SurveyStatus`: add `PUBLISHING` (between `DRAFT` and `PUBLISHED`)
+- `ResponseStatus`: add `SUBMITTING` (between `IN_PROGRESS` and `SUBMITTED`)
+
+**New fields:**
 - `Survey`: `publishBlockNumber String?`, `publishBlockTimestamp DateTime?`, `closeBlockNumber String?`, `closeBlockTimestamp DateTime?`
 - `Response`: `submitBlockNumber String?`, `submitBlockTimestamp DateTime?`
 - New model `VerificationResult`:
@@ -817,14 +829,9 @@ try {
 }
 
 if (!depsMet) {
-  // Release the job back to PENDING with a short delay to avoid busy-looping
-  await db.backgroundJob.update({
-    where: { id: job.id },
-    data: {
-      status: "PENDING",
-      nextAttemptAt: new Date(Date.now() + 5_000), // retry after 5s
-    },
-  });
+  // Release back to PENDING with a short deferral — does NOT increment retryCount.
+  // Requires releaseJob from Sub-Plan 2-0 (Queue Hardening).
+  await releaseJob(job.id, 5_000); // retry after 5s
   console.log(
     `[Worker] Job ${job.id} (${job.type}) deferred 5s — dependencies not yet met`,
   );
@@ -832,9 +839,9 @@ if (!depsMet) {
 }
 ```
 
-Import `areDependenciesMet` from `./queue` and `db` from `~/server/jobs/db` in the worker module.
+Import `areDependenciesMet` from `./queue`, `releaseJob` from `./queue`, and `db` from `~/server/jobs/db` in the worker module.
 
-**Important:** The existing worker code must NOT call `failJob` when backoff is not elapsed — `failJob` increments the retry counter, which would burn retry budget on dependency-blocked jobs. The `nextAttemptAt` path above must use a dedicated `releaseJob` path that only updates `status` and `nextAttemptAt` without touching `retryCount`. Verify the worker's backoff path handles this correctly before adding dependency-skip logic on top.
+**Prerequisite:** Sub-Plan 2-0 (Queue Hardening) must be applied first. It adds `releaseJob`, `nextAttemptAt` to the schema, and fixes `claimNextJob` to respect the deferral window. Without it, calling `releaseJob` will fail at compile time.
 
 - [ ] **Step 3: Verify TypeScript compiles**
 
@@ -898,7 +905,7 @@ After completing all tasks, verify:
 - [ ] `src/server/jobs/handlers/verify-responses.ts` -- check IPFS CIDs, blinded ID uniqueness, count match; stores result in VerificationResult
 - [ ] `src/server/jobs/handlers.ts` -- real handlers registered (no more placeholders for blockchain job types)
 - [ ] `src/server/jobs/queue.ts` -- has `areDependenciesMet` function for job ordering; throws on FAILED dependency; returns false (not throws) when dependency still pending
-- [ ] `src/server/jobs/worker.ts` -- checks dependencies before processing; defers with 5s `nextAttemptAt` to avoid busy-loop; marks FAILED if dependency permanently failed
+- [ ] `src/server/jobs/worker.ts` -- checks dependencies before processing; uses `releaseJob(job.id, 5_000)` to defer without burning retryCount; marks FAILED if dependency permanently failed
 - [ ] SUBMIT_RESPONSE jobs wait for PUBLISH_SURVEY to complete for the same survey; immediately fail if PUBLISH_SURVEY failed
 - [ ] CLOSE_SURVEY jobs wait for all SUBMIT_RESPONSE jobs to complete for the same survey
 - [ ] Prisma schema updated with `publishBlockNumber`, `publishBlockTimestamp`, `closeBlockNumber`, `closeBlockTimestamp` on Survey; `submitBlockNumber`, `submitBlockTimestamp` on Response; new `VerificationResult` model

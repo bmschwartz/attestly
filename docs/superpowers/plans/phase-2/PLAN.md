@@ -6,11 +6,13 @@
 
 Phase 2 adds blockchain verification to the survey platform. Smart contract on Base L2 records survey lifecycle events. EIP-712 signatures prove creator/respondent authorship. IPFS stores survey content and response data. A relayer submits transactions on behalf of users (paying gas) while the contract verifies signatures.
 
-11 sub-plans. Build in order — each depends on its predecessors.
+12 sub-plans. Build in order — each depends on its predecessors.
 
 ## Dependency Graph
 
 ```
+2-0 Queue Hardening (prerequisite — fixes Phase 1 bugs)
+    ↓
 2-1a Hardhat Setup
     ↓
 2-1b Contract Implementation
@@ -31,6 +33,7 @@ Phase 2 adds blockchain verification to the survey platform. Smart contract on B
 
 | # | Plan | Goal | Key Files |
 |---|------|------|-----------|
+| [2-0](2026-04-08-2-0-queue-hardening.md) | **Queue Hardening** | Fix retry-count burn in backoff path; add `releaseJob` + `nextAttemptAt` for dep-blocked jobs | `src/server/jobs/queue.ts`, `src/server/jobs/worker.ts` |
 | [2-1a](2026-04-08-2-1a-hardhat-setup.md) | **Hardhat Setup** | Project config, deps, directory structure, interface | `contracts/`, `hardhat.config.ts` |
 | [2-1b](2026-04-08-2-1b-contract-implementation.md) | **Contract Implementation** | Full Attestly.sol with EIP-712 recovery, UUPS proxy | `contracts/Attestly.sol` |
 | [2-1c](2026-04-08-2-1c-contract-tests.md) | **Contract Tests** | 22+ tests covering all functions, reverts, lifecycle | `contracts/test/` |
@@ -64,8 +67,7 @@ Phase 2 adds blockchain verification to the survey platform. Smart contract on B
 ## Environment Variables (new in Phase 2)
 
 ```
-# Server-side
-ADMIN_PRIVATE_KEY=          # UUPS proxy owner (deploy + upgrades)
+# Server-side (app env)
 RELAYER_PRIVATE_KEY=        # Transaction submitter (hot wallet)
 ATTESTLY_CONTRACT_ADDRESS=  # Stable after first UUPS deploy
 BASE_RPC_URL=               # Base Sepolia or mainnet RPC
@@ -75,4 +77,7 @@ PINATA_GATEWAY_URL=         # Pinata dedicated gateway URL
 # Client-side (exposed to browser via NEXT_PUBLIC_)
 NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS=  # Same value as server-side (for EIP-712 domain)
 NEXT_PUBLIC_CHAIN_ID=                   # 8453 (mainnet) or 84532 (Base Sepolia)
+
+# Local-only (Hardhat deploy scripts, NOT in server env)
+# ADMIN_PRIVATE_KEY=        # UUPS proxy owner — lives in 1Password, never on server
 ```

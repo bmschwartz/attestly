@@ -18,15 +18,17 @@
 
 The signing integration has two parts:
 
-1. **Server side** — Modify `survey.publish` and `response.submit` tRPC procedures to:
+1. **Server side** — Modify `survey.publish`, `response.submit`, and `survey.close` tRPC procedures to:
    - Accept a `signature` field in the input
    - Store the signature in the `BackgroundJob.payload` (alongside `surveyId`/`responseId`)
    - Validate the signature server-side before enqueuing (optional but recommended)
 
-2. **Client side** — Modify the publish survey and submit response call sites to:
+2. **Client side** — Modify the publish survey, submit response, and close survey call sites to:
    - Compute the EIP-712 hash using the `hashSurvey`/`hashAnswers` functions
    - Sign the hash using Privy's `signTypedData` (or `useSignTypedData` hook)
    - Pass the resulting signature to the tRPC mutation
+
+**Gating pattern (D3/D7):** The tRPC procedures do NOT transition directly to the final status (`PUBLISHED`, `SUBMITTED`). Instead, they transition to an intermediate status (`PUBLISHING`, `SUBMITTING`) to indicate that the on-chain transaction is pending. The job handler (in 2-4b) transitions to the final status on success, or rolls back on failure. This prevents the UI from showing a "published" state before the transaction is confirmed on-chain.
 
 ---
 
@@ -36,6 +38,8 @@ The signing integration has two parts:
 - Modify: `src/server/api/routers/response.ts` — add `signature` field to `submit` input
 - Modify: client component that calls `survey.publish` — add EIP-712 signing step before mutation
 - Modify: client component that calls `response.submit` — add EIP-712 signing step before mutation
+- Modify: `src/server/api/routers/survey.ts` — add `signature` field to `close` input
+- Modify: client component `close-survey-dialog.tsx` — add EIP-712 signing step before close mutation
 - Modify: `src/env.js` — ensure `NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS` and `NEXT_PUBLIC_CHAIN_ID` are present (added in 2-4a)
 
 ---
@@ -45,12 +49,15 @@ The signing integration has two parts:
 **Files:**
 - Modify: `src/server/api/routers/survey.ts`
 
-- [ ] **Step 1: Add `signature` to the `publish` input schema**
+- [ ] **Step 1: Add `signature` and `surveyHash` to the `publish` input schema**
 
 Find the `survey.publish` procedure and extend its Zod input to include:
 ```typescript
 signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "Must be a valid EIP-712 signature"),
+surveyHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, "Must be a valid bytes32 hex string"),
 ```
+
+**Status transition (D3):** The procedure should transition the survey status from `DRAFT` to `PUBLISHING` (NOT `PUBLISHED`). The job handler in 2-4b will transition `PUBLISHING -> PUBLISHED` on success, or roll back to `DRAFT` on failure.
 
 - [ ] **Step 2: Pass `signature` into the job payload**
 
@@ -66,7 +73,25 @@ await createJob({
 });
 ```
 
-- [ ] **Step 3: (Optional) Validate signature server-side before enqueuing**
+- [ ] **Step 3: Server-side hash validation (D1)**
+
+Before enqueuing the job, recompute `surveyHash` from the DB and compare it to the client-provided `input.surveyHash`. If they differ, return an error. This preserves the adversary B trust model: the client computes the hash and signs it, but the server validates it matches current DB state.
+
+```typescript
+import { hashSurvey, buildSurveyMessage } from "~/lib/eip712/hash";
+
+const serverSurveyMessage = buildSurveyMessage(survey, questions);
+const serverHash = hashSurvey(serverSurveyMessage);
+
+if (serverHash !== input.surveyHash) {
+  throw new TRPCError({
+    code: "CONFLICT",
+    message: "Survey content has changed since you signed. Please reload and try again.",
+  });
+}
+```
+
+- [ ] **Step 4: (Optional) Validate signature server-side before enqueuing**
 
 To catch bad signatures early (before wasting a job slot), optionally verify the signature server-side using viem:
 
@@ -113,6 +138,8 @@ Find the `response.submit` procedure and extend its Zod input:
 ```typescript
 signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "Must be a valid EIP-712 signature"),
 ```
+
+**Status transition (D7):** The procedure should transition the response status from `IN_PROGRESS` to `SUBMITTING` (NOT `SUBMITTED`). The job handler in 2-4b will transition `SUBMITTING -> SUBMITTED` on success, or roll back to `IN_PROGRESS` on failure.
 
 - [ ] **Step 2: Pass `signature` into the job payload**
 
@@ -181,6 +208,10 @@ Key notes:
 - The signing step is async. Wrap in try/catch and surface errors to the user (e.g., "Signing rejected").
 - The `buildPublishSurveyTypedData` function should be added to `src/lib/eip712/domain.ts` as part of this sub-plan if not already present (it builds the full EIP-712 typed data object including domain, types, and message for `signTypedData`).
 
+**Wallet readiness guard (D2):** Disable the Publish button when `wallet?.address` is null. Show a tooltip "Wallet not ready". Import wallet state from Privy (e.g., `usePrivy()` or `useWallets()`).
+
+**isSaving guard (D1):** The Publish button must also be disabled while `saveCurrentState` is in-flight. The `useSurveyBuilder` hook should expose an `isSaving` boolean, and `StepReview` should check it. This prevents the user from publishing stale content that hasn't been persisted to the DB yet.
+
 ---
 
 ### Task 4: Update the submit response client component
@@ -217,6 +248,8 @@ submitMutation.mutate({ ...formData, signature });
 ```
 
 Note: `survey.contentHash` must be available to the response submission page. If it is not currently returned by the survey query, add it to the tRPC response (it is a public field — no privacy concern).
+
+**Wallet readiness guard (D2):** Disable the Submit button when `wallet?.address` is null. Show a tooltip "Wallet not ready". Import wallet state from Privy.
 
 ---
 
@@ -277,11 +310,80 @@ export function buildSubmitResponseTypedData(message: {
 }
 ```
 
-These must match the `PUBLISH_SURVEY_TYPEHASH` and `SUBMIT_RESPONSE_TYPEHASH` structs in Attestly.sol exactly.
+- [ ] **Step 2: Add `buildCloseSurveyTypedData` helper**
+
+```typescript
+// For survey closing — signs only the surveyHash
+export function buildCloseSurveyTypedData(message: {
+  surveyHash: Hex;
+}) {
+  return {
+    domain: getEip712Domain(),
+    types: {
+      CloseSurvey: [
+        { name: "surveyHash", type: "bytes32" },
+      ],
+    },
+    primaryType: "CloseSurvey" as const,
+    message,
+  };
+}
+```
+
+These must match the `PUBLISH_SURVEY_TYPEHASH`, `SUBMIT_RESPONSE_TYPEHASH`, and `CLOSE_SURVEY_TYPEHASH` structs in Attestly.sol exactly.
+
+**Privy type note (D13):** Privy's `SignTypedDataParams` uses `chainId?: number` and `verifyingContract?: string`, NOT viem's `Hex` types. The typed data builder return types should match Privy's expected input, or the call site must cast. For example, `getEip712Domain()` may return `verifyingContract` as `` `0x${string}` `` (viem's `Hex`), but Privy accepts plain `string`. Ensure the types are compatible at the call site — either adjust the builder return type or cast when calling `signTypedData`.
 
 ---
 
-### Task 6: Typecheck and verify
+### Task 6: Update `survey.close` tRPC procedure and close dialog (D5)
+
+**Files:**
+- Modify: `src/server/api/routers/survey.ts`
+- Modify: `src/app/.../close-survey-dialog.tsx` (locate via grep)
+
+- [ ] **Step 1: Add `signature` to the `survey.close` input schema**
+
+Find the `survey.close` procedure and extend its Zod input:
+```typescript
+signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "Must be a valid EIP-712 signature"),
+```
+
+- [ ] **Step 2: Pass `signature` into the CLOSE_SURVEY job payload**
+
+```typescript
+await createJob({
+  type: "CLOSE_SURVEY",
+  surveyId: survey.id,
+  payload: {
+    surveyId: survey.id,
+    signature: input.signature,
+  },
+});
+```
+
+- [ ] **Step 3: Update `close-survey-dialog.tsx` to sign before closing**
+
+Import and use `useSignTypedData` from Privy. Before calling `closeMutation.mutate`, sign the typed data:
+
+```typescript
+import { useSignTypedData } from "@privy-io/react-auth";
+import { buildCloseSurveyTypedData } from "~/lib/eip712/domain";
+
+// The CloseSurvey typed data signs { surveyHash } only (matching CLOSE_SURVEY_TYPEHASH)
+const typedData = buildCloseSurveyTypedData({
+  surveyHash: survey.contentHash as `0x${string}`,
+});
+
+const signature = await signTypedData(typedData);
+closeMutation.mutate({ surveyId: survey.id, signature });
+```
+
+**Wallet readiness guard (D2):** Disable the Close button when `wallet?.address` is null. Show a tooltip "Wallet not ready". Import wallet state from Privy.
+
+---
+
+### Task 7: Typecheck and verify
 
 - [ ] **Step 1: Run `pnpm typecheck`** — no TypeScript errors
 
@@ -301,11 +403,19 @@ Publish a survey through the UI and confirm:
 ## Verification Checklist
 
 - [ ] `pnpm typecheck` — no TypeScript errors
-- [ ] `survey.publish` tRPC input includes `signature: z.string()`
+- [ ] `survey.publish` tRPC input includes `signature: z.string()` and `surveyHash: z.string()`
 - [ ] `response.submit` tRPC input includes `signature: z.string()`
+- [ ] `survey.close` tRPC input includes `signature: z.string()`
 - [ ] `BackgroundJob.payload` for PUBLISH_SURVEY includes `{ surveyId, signature }`
 - [ ] `BackgroundJob.payload` for SUBMIT_RESPONSE includes `{ responseId, signature }`
+- [ ] `BackgroundJob.payload` for CLOSE_SURVEY includes `{ surveyId, signature }`
+- [ ] `survey.publish` transitions `DRAFT -> PUBLISHING` (not `PUBLISHED`)
+- [ ] `response.submit` transitions `IN_PROGRESS -> SUBMITTING` (not `SUBMITTED`)
+- [ ] Server-side hash validation: `survey.publish` recomputes `surveyHash` and compares to client-provided value
 - [ ] Client component signs via Privy before calling `publishMutation.mutate`
 - [ ] Client component signs via Privy before calling `submitMutation.mutate`
-- [ ] `buildPublishSurveyTypedData` and `buildSubmitResponseTypedData` exported from `src/lib/eip712/domain.ts`
+- [ ] Client component signs via Privy before calling `closeMutation.mutate`
+- [ ] Wallet readiness guard: publish, submit, and close buttons disabled when `wallet?.address` is null
+- [ ] isSaving guard: publish button disabled while `saveCurrentState` is in-flight
+- [ ] `buildPublishSurveyTypedData`, `buildSubmitResponseTypedData`, and `buildCloseSurveyTypedData` exported from `src/lib/eip712/domain.ts`
 - [ ] Typed data structs match Attestly.sol TYPEHASH definitions exactly
