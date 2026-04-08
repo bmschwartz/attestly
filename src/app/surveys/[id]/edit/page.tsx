@@ -3,33 +3,33 @@
 import { useParams, useRouter } from "next/navigation";
 import { AuthGuard } from "~/app/_components/auth-guard";
 import { api } from "~/trpc/react";
-import { SurveyBuilderClient } from "./_components/SurveyBuilderClient";
 
-export default function SurveyBuilderPage() {
+/**
+ * Legacy route: /surveys/[id]/edit
+ * Redirects to the canonical slug-based wizard at /s/[slug]/edit.
+ */
+export default function SurveyBuilderRedirectPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
 
-  const { data: survey, isLoading, error } = api.survey.getForEdit.useQuery(
+  const { data: survey, isLoading } = api.survey.getForEdit.useQuery(
     { id: params.id },
     { retry: false },
   );
 
-  if (isLoading) {
-    return (
-      <AuthGuard>
-        <div className="flex min-h-screen items-center justify-center">
-          <p className="text-gray-500">Loading survey...</p>
-        </div>
-      </AuthGuard>
-    );
+  if (!isLoading && survey) {
+    router.replace(`/s/${survey.slug}/edit`);
+    return null;
   }
 
-  if (error || !survey) {
-    return (
-      <AuthGuard>
-        <div className="flex min-h-screen items-center justify-center">
+  return (
+    <AuthGuard>
+      <div className="flex min-h-screen items-center justify-center">
+        {isLoading ? (
+          <p className="text-gray-500">Redirecting…</p>
+        ) : (
           <div className="text-center">
-            <p className="text-gray-700 font-medium">Survey not found</p>
+            <p className="font-medium text-gray-700">Survey not found</p>
             <button
               onClick={() => router.push("/dashboard")}
               className="mt-4 text-sm text-blue-600 hover:underline"
@@ -37,19 +37,8 @@ export default function SurveyBuilderPage() {
               Back to dashboard
             </button>
           </div>
-        </div>
-      </AuthGuard>
-    );
-  }
-
-  if (survey.status !== "DRAFT") {
-    router.push(`/s/${survey.slug}`);
-    return null;
-  }
-
-  return (
-    <AuthGuard>
-      <SurveyBuilderClient initialSurvey={survey} />
+        )}
+      </div>
     </AuthGuard>
   );
 }

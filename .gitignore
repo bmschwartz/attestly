@@ -13,7 +13,6 @@
 /prisma/db.sqlite-journal
 db.sqlite
 /generated/prisma
-.claude
 
 # next.js
 /.next/
