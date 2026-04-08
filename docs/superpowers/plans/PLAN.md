@@ -94,4 +94,49 @@ Each sub-plan is designed for **subagent-driven development**:
 3. Code quality review after spec passes
 4. Commit after both reviews pass
 
-Total estimated effort: ~20-25 agent sessions across all 19 sub-plans. Execute sequentially — no manual code changes between plans.
+Total estimated effort: ~20-25 agent sessions across all 19 Phase 1 sub-plans. Execute sequentially — no manual code changes between plans.
+
+---
+
+## Phase 2: On-Chain Verification
+
+9 sub-plans. Build in order — each depends on its predecessors.
+
+### Dependency Graph
+
+```
+2-1a Hardhat Setup
+    ↓
+2-1b Contract Implementation
+    ↓
+2-1c Contract Tests
+    ↓
+2-2 EIP-712 TypeScript Library
+    ├→ 2-3 IPFS / Pinata
+    │   └→ 2-4 Relayer + Job Handlers
+    │       └→ 2-5a Verification API
+    │           └→ 2-5b Verification UI
+    └→ 2-6 Open-Source Tools (independent, can defer)
+```
+
+### Sub-Plans
+
+| # | Plan | Goal | Key Files |
+|---|------|------|-----------|
+| [2-1a](2026-04-08-2-1a-hardhat-setup.md) | **Hardhat Setup** | Project config, deps, directory structure, interface | `contracts/`, `hardhat.config.ts` |
+| [2-1b](2026-04-08-2-1b-contract-implementation.md) | **Contract Implementation** | Full Attestly.sol with EIP-712 recovery, UUPS proxy | `contracts/Attestly.sol` |
+| [2-1c](2026-04-08-2-1c-contract-tests.md) | **Contract Tests** | 22+ tests covering all functions, reverts, lifecycle | `contracts/test/` |
+| [2-2](2026-04-08-2-2-eip712-library.md) | **EIP-712 Library** | Domain, types, hashing, signing, blinded ID computation | `src/lib/eip712/` |
+| [2-3](2026-04-08-2-3-ipfs-pinata.md) | **IPFS / Pinata** | Deterministic JSON, pin survey/response, Pinata client | `src/lib/ipfs/` |
+| [2-4](2026-04-08-2-4-relayer-job-handlers.md) | **Relayer + Job Handlers** | Blockchain provider, tx submission, wire all 4 job handlers | `src/server/blockchain/` |
+| [2-5a](2026-04-08-2-5a-verification-api.md) | **Verification API** | tRPC procedures, cached integrity checks, proof data | `src/server/api/routers/verification.ts` |
+| [2-5b](2026-04-08-2-5b-verification-ui.md) | **Verification UI** | /s/[slug]/verify page, status badges, check display | `src/app/s/[slug]/verify/` |
+| [2-6](2026-04-08-2-6-open-source-tools.md) | **Open-Source Tools** | CLI verifier + static page (deferrable) | `packages/verify/` |
+
+### Phase 2 Tech Stack Additions
+
+- **Contract:** Solidity ^0.8.24, Hardhat, OpenZeppelin (UUPS, ECDSA, EIP712)
+- **Chain:** Base L2 (chainId 8453, Sepolia for testnet)
+- **Signing:** viem (EIP-712 typed data hashing + signing)
+- **IPFS:** Pinata SDK
+- **Serialization:** RFC 8785 JSON Canonicalization
