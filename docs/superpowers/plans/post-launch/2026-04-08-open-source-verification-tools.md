@@ -10,7 +10,7 @@
 
 **Spec reference:** `docs/superpowers/specs/2026-04-05-blockchain-verification-design.md`
 
-> **DEFERRED TO PRE-LAUNCH PHASE.** This plan is deferred to the pre-launch phase per design decision from 2026-04-08 grill-me session. The Phase 2 verification page (2-5a/2-5b) ships with a minimal display of stored proof data (tx hashes, block numbers, Basescan links, IPFS CIDs) without live hash recomputation in the browser. Full independent verification -- live hash recomputation, on-chain reads from the browser, CLI tools, and the static verification page -- will be implemented in this plan before launch.
+> **POST-LAUNCH PHASE.** Moved from Phase 2 to post-launch. The Phase 2 verification page (2-5a/2-5b) shipped with stored proof data display. Full independent verification — live hash recomputation, on-chain reads from the browser, CLI tools, and the static verification page — will be implemented after launch.
 
 **Note:** This plan is independent of Sub-Plans 2-5a and 2-5b. It can be implemented at any time.
 

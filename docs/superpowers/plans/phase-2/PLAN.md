@@ -6,7 +6,7 @@
 
 Phase 2 adds blockchain verification to the survey platform. Smart contract on Base L2 records survey lifecycle events. EIP-712 signatures prove creator/respondent authorship. IPFS stores survey content and response data. A relayer submits transactions on behalf of users (paying gas) while the contract verifies signatures.
 
-12 sub-plans. Build in order — each depends on its predecessors.
+11 sub-plans, all complete. Open-source verification tools moved to a post-launch phase.
 
 ## Dependency Graph
 
@@ -26,7 +26,6 @@ Phase 2 adds blockchain verification to the survey platform. Smart contract on B
     │           └→ 2-4b Job Handlers
     │               └→ 2-5a Verification API
     │               └→ 2-5b Verification UI
-    └→ 2-6 Open-Source Tools (deferred to pre-launch)
 ```
 
 ## Sub-Plans
@@ -44,7 +43,6 @@ Phase 2 adds blockchain verification to the survey platform. Smart contract on B
 | [2-4b](2026-04-08-2-4b-job-handlers.md) | **Job Handlers** | Wire PUBLISH, SUBMIT, CLOSE, VERIFY handlers + job ordering | `src/server/jobs/handlers/` |
 | [2-5a](2026-04-08-2-5a-verification-api.md) | **Verification API** | tRPC procedures, proof data retrieval | `src/server/api/routers/verification.ts` |
 | [2-5b](2026-04-08-2-5b-verification-ui.md) | **Verification UI** | /s/[slug]/verify page, status badges | `src/app/s/[slug]/verify/` |
-| [2-6](2026-04-08-2-6-open-source-tools.md) | **Open-Source Tools** | CLI verifier + static page *(deferred to pre-launch)* | `packages/verify/` |
 
 ## Key Design Decisions
 
@@ -52,7 +50,7 @@ Phase 2 adds blockchain verification to the survey platform. Smart contract on B
 - **Compact signing payload** — user signs `{ surveyHash, title, slug, questionCount, creator }` not the full survey data. Content hash binds signature to exact content.
 - **Separate wallets** — admin wallet (UUPS owner, cold storage) vs relayer wallet (tx submitter, hot)
 - **Gas ceiling** — reject txs above 10x expected gas, retry later. Contract reverts fail permanently.
-- **Minimal verification page** — show proof data (tx hashes, Basescan links, IPFS CIDs). No live hash recomputation in browser — that's for the open-source CLI (pre-launch).
+- **Minimal verification page** — show proof data (tx hashes, Basescan links, IPFS CIDs). No live hash recomputation in browser — that's for the open-source CLI (post-launch phase).
 - **Contract address as env var** — `ATTESTLY_CONTRACT_ADDRESS`, stable after first UUPS deploy
 - **Local Hardhat for contract dev** → Base Sepolia for integration testing
 
