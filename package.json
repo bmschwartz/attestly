@@ -22,6 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "compile": "hardhat compile",
+    "hardhat:test": "hardhat test",
     "worker": "tsx src/server/jobs/start-worker.ts"
   },
   "dependencies": {
@@ -48,6 +50,10 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-ignition": "^3.1.1",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.3",
+    "@openzeppelin/contracts": "^5.6.1",
+    "@openzeppelin/contracts-upgradeable": "^5.6.1",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^25.5.2",
     "@types/pg": "^8.20.0",
@@ -56,6 +62,7 @@
     "@vitest/coverage-v8": "^4.1.3",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.2",
+    "hardhat": "^3.3.0",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
@@ -64,6 +71,7 @@
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.0",
+    "viem": "^2.47.10",
     "vitest": "^4.1.3"
   },
   "ct3aMetadata": {

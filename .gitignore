@@ -46,7 +46,15 @@ yarn-error.log*
 # idea files
 .idea
 
+# Hardhat
+cache_hardhat/
+artifacts/
+typechain-types/
+
 # superpowers brainstorm artifacts
 .superpowers/
-docs/superpowers/specs/reviews
-docs/superpowers/plans/reviews
+docs/**/reviews/
+docs/**/REVIEW.md
+
+# git worktrees
+.worktrees/
