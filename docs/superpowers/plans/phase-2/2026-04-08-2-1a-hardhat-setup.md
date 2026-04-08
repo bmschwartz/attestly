@@ -383,6 +383,9 @@ contract Attestly is
         bytes32 surveyHash,
         string calldata ipfsCid,
         address creator,
+        string calldata title,
+        string calldata slug,
+        uint8 questionCount,
         bytes calldata signature
     ) external override {
         revert("Not implemented");
@@ -392,6 +395,8 @@ contract Attestly is
         bytes32 surveyHash,
         bytes32 blindedId,
         string calldata ipfsCid,
+        uint8 answerCount,
+        bytes32 answersHash,
         bytes calldata signature
     ) external override {
         revert("Not implemented");

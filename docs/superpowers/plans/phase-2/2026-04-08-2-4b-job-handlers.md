@@ -161,7 +161,10 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
     `publishSurvey for survey ${surveyId} (hash: ${surveyHash.slice(0, 10)}...)`,
   );
 
-  // 6. Update Survey record with tx hash and block metadata
+  // 6. Get block timestamp (receipt does not include timestamp)
+  const block = await getPublicClient().getBlock({ blockNumber: receipt.blockNumber });
+
+  // Update Survey record with tx hash and block metadata
   await db.survey.update({
     where: { id: surveyId },
     data: {
@@ -170,7 +173,8 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
       status: "PUBLISHED", // PUBLISHING → PUBLISHED (survey goes live)
       publishTxHash: txHash,
       publishBlockNumber: receipt.blockNumber.toString(),
-      publishBlockTimestamp: new Date(Number(receipt.timestamp) * 1000),
+      publishBlockTimestamp: new Date(Number(block.timestamp) * 1000),
+      publishedAt: new Date(),
       verificationStatus: "VERIFIED",
     },
   });
@@ -270,7 +274,7 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
     where: { id: responseId },
     include: {
       answers: {
-        orderBy: { questionId: "asc" },
+        orderBy: { question: { position: "asc" } },
         include: {
           question: { select: { position: true, questionType: true } },
         },
@@ -361,7 +365,10 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
     `submitResponse for response ${responseId} (survey: ${surveyHash.slice(0, 10)}...)`,
   );
 
-  // 7. Update Response record with tx hash and block metadata
+  // 7. Get block timestamp (receipt does not include timestamp)
+  const block = await getPublicClient().getBlock({ blockNumber: receipt.blockNumber });
+
+  // Update Response record with tx hash and block metadata
   await db.response.update({
     where: { id: responseId },
     data: {
@@ -370,7 +377,7 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
       status: "SUBMITTED", // SUBMITTING → SUBMITTED (response fully on-chain)
       submitTxHash: txHash,
       submitBlockNumber: receipt.blockNumber.toString(),
-      submitBlockTimestamp: new Date(Number(receipt.timestamp) * 1000),
+      submitBlockTimestamp: new Date(Number(block.timestamp) * 1000),
       verificationStatus: "VERIFIED",
     },
   });
@@ -386,7 +393,7 @@ Key notes:
 - Answer mapping: `questionIndex` uses the question's `position` field, `questionType` uses the question's `questionType` field (not `type`), and `value` is the stored answer value.
 - The blinded ID is computed server-side (same computation as on-chain) and stored in both the Response record and the IPFS JSON.
 - `answersHash` is computed via `hashAnswers` (chain-independent `keccak256(encodeAbiParameters(...))`) and passed to the contract. This matches the `SUBMIT_RESPONSE_TYPEHASH` struct which signs `{surveyHash, blindedId, answerCount, answersHash}`.
-- `submitBlockTimestamp` uses `receipt.timestamp` (seconds since epoch), not `receipt.blockNumber`. Block number is meaningless as a timestamp.
+- `submitBlockTimestamp` uses `block.timestamp` (fetched via `getBlock`) since transaction receipts do not include timestamps. Block number is meaningless as a timestamp.
 - `submitBlockNumber` is stored as a string to handle BigInt serialization safely.
 
 - [ ] **Step 2: Verify TypeScript compiles**
@@ -476,14 +483,37 @@ export async function handleCloseSurvey(job: BackgroundJob): Promise<void> {
     `closeSurvey for survey ${surveyId} (hash: ${surveyHash.slice(0, 10)}...)`,
   );
 
-  // 4. Update Survey record with tx hash and block metadata
+  // 4. Get block timestamp (receipt does not include timestamp)
+  const block = await getPublicClient().getBlock({ blockNumber: receipt.blockNumber });
+
+  // Update Survey record with tx hash, block metadata, and final status
   await db.survey.update({
     where: { id: surveyId },
     data: {
+      status: "CLOSED", // CLOSING → CLOSED (survey fully closed on-chain)
+      closedAt: new Date(),
       closeTxHash: txHash,
       closeBlockNumber: receipt.blockNumber.toString(),
-      closeBlockTimestamp: new Date(Number(receipt.timestamp) * 1000),
+      closeBlockTimestamp: new Date(Number(block.timestamp) * 1000),
     },
+  });
+
+  // Soft-delete IN_PROGRESS responses (abandoned responses for this survey)
+  await db.response.updateMany({
+    where: {
+      surveyId,
+      status: "IN_PROGRESS",
+    },
+    data: {
+      status: "ABANDONED",
+    },
+  });
+
+  // Enqueue AI summary generation
+  await createJob({
+    type: "GENERATE_AI_SUMMARY",
+    surveyId,
+    payload: { surveyId },
   });
 
   // 5. Queue VERIFY_RESPONSES job
@@ -710,9 +740,7 @@ registerHandler("GENERATE_AI_SUMMARY", async (job) => {
 
 The following changes must be made to the Prisma schema before running:
 
-**Enum additions:**
-- `SurveyStatus`: add `PUBLISHING` (between `DRAFT` and `PUBLISHED`)
-- `ResponseStatus`: add `SUBMITTING` (between `IN_PROGRESS` and `SUBMITTED`)
+**Note:** The `PUBLISHING`, `CLOSING`, and `SUBMITTING` enum additions are handled in Sub-Plan 2-3b's Task 0 migration. Do not duplicate them here.
 
 **New fields:**
 - `Survey`: `publishBlockNumber String?`, `publishBlockTimestamp DateTime?`, `closeBlockNumber String?`, `closeBlockTimestamp DateTime?`
@@ -821,7 +849,7 @@ try {
     where: { id: job.id },
     data: {
       status: "FAILED",
-      lastError: err instanceof Error ? err.message : String(err),
+      error: err instanceof Error ? err.message : String(err),
     },
   });
   console.error(`[Worker] Job ${job.id} (${job.type}) failed — dependency error:`, err);

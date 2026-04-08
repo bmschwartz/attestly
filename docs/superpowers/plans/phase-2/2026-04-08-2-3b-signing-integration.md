@@ -44,6 +44,36 @@ The signing integration has two parts:
 
 ---
 
+### Task 0: Schema migration for Phase 2 statuses
+
+**Files:**
+- Modify: `prisma/schema.prisma`
+
+- [ ] **Step 1: Add gating statuses to Prisma enums**
+
+Add the following values to the existing enums in `prisma/schema.prisma`:
+
+- `SurveyStatus`: add `PUBLISHING` (between `DRAFT` and `PUBLISHED`) and `CLOSING` (between `PUBLISHED` and `CLOSED`)
+- `ResponseStatus`: add `SUBMITTING` (between `IN_PROGRESS` and `SUBMITTED`)
+
+These intermediate statuses gate visibility and prevent premature transitions while on-chain transactions are pending.
+
+- [ ] **Step 2: Run the migration**
+
+```bash
+pnpm prisma migrate dev --name phase2_status_enums
+```
+
+- [ ] **Step 3: Verify TypeScript compiles**
+
+```bash
+pnpm typecheck
+```
+
+**Note:** Block number/timestamp fields and the `VerificationResult` model are added later in Sub-Plan 2-4b's schema migration. Do not add them here.
+
+---
+
 ### Task 1: Update `survey.publish` tRPC procedure
 
 **Files:**
@@ -58,6 +88,8 @@ surveyHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, "Must be a valid bytes32 hex
 ```
 
 **Status transition (D3):** The procedure should transition the survey status from `DRAFT` to `PUBLISHING` (NOT `PUBLISHED`). The job handler in 2-4b will transition `PUBLISHING -> PUBLISHED` on success, or roll back to `DRAFT` on failure.
+
+**Visibility guard (NI-2):** Update `getBySlug` in `survey.ts` to return NOT_FOUND for `PUBLISHING` surveys when the requester is not the creator. Only the creator sees the "Publishing..." state. Non-creators should not see a half-published survey.
 
 - [ ] **Step 2: Pass `signature` into the job payload**
 
@@ -90,6 +122,27 @@ if (serverHash !== input.surveyHash) {
   });
 }
 ```
+
+- [ ] **Step 3b: Add `buildSurveyMessage` helper**
+
+A `buildSurveyMessage` helper function should be added to `src/lib/eip712/hash.ts` (or `types.ts`) that constructs a `SurveyMessage` from DB/form data. This avoids duplicating the mapping logic across the tRPC procedure and job handler.
+
+```typescript
+export function buildSurveyMessage(
+  survey: {
+    title: string;
+    description: string;
+    slug: string;
+    isPrivate: boolean;
+    accessMode: string;
+    resultsVisibility: string;
+  },
+  creator: `0x${string}`,
+  questions: SurveyQuestion[],
+): SurveyMessage
+```
+
+This function is used in Step 3 above (`buildSurveyMessage(survey, questions)`) and in the PUBLISH_SURVEY job handler (2-4b).
 
 - [ ] **Step 4: (Optional) Validate signature server-side before enqueuing**
 
@@ -140,6 +193,8 @@ signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "Must be a valid EIP-712 sig
 ```
 
 **Status transition (D7):** The procedure should transition the response status from `IN_PROGRESS` to `SUBMITTING` (NOT `SUBMITTED`). The job handler in 2-4b will transition `SUBMITTING -> SUBMITTED` on success, or roll back to `IN_PROGRESS` on failure.
+
+**Free-tier cap (NI-3):** Update the free-tier response count query in `response.start` (or wherever the cap is checked) to include `SUBMITTING` status alongside `SUBMITTED`: `status: { in: ["SUBMITTED", "SUBMITTING"] }`. This prevents users from bypassing the cap by submitting while a previous response is still being anchored on-chain.
 
 - [ ] **Step 2: Pass `signature` into the job payload**
 
@@ -272,13 +327,13 @@ export function buildPublishSurveyTypedData(message: {
   creator: `0x${string}`;
 }) {
   return {
-    domain: getEip712Domain(),
+    domain: getAttestlyDomain(),
     types: {
       PublishSurvey: [
         { name: "surveyHash", type: "bytes32" },
         { name: "title", type: "string" },
         { name: "slug", type: "string" },
-        { name: "questionCount", type: "uint256" },
+        { name: "questionCount", type: "uint8" },
         { name: "creator", type: "address" },
       ],
     },
@@ -295,12 +350,12 @@ export function buildSubmitResponseTypedData(message: {
   answersHash: Hex;
 }) {
   return {
-    domain: getEip712Domain(),
+    domain: getAttestlyDomain(),
     types: {
       SubmitResponse: [
         { name: "surveyHash", type: "bytes32" },
         { name: "blindedId", type: "bytes32" },
-        { name: "answerCount", type: "uint256" },
+        { name: "answerCount", type: "uint8" },
         { name: "answersHash", type: "bytes32" },
       ],
     },
@@ -318,7 +373,7 @@ export function buildCloseSurveyTypedData(message: {
   surveyHash: Hex;
 }) {
   return {
-    domain: getEip712Domain(),
+    domain: getAttestlyDomain(),
     types: {
       CloseSurvey: [
         { name: "surveyHash", type: "bytes32" },
@@ -332,7 +387,7 @@ export function buildCloseSurveyTypedData(message: {
 
 These must match the `PUBLISH_SURVEY_TYPEHASH`, `SUBMIT_RESPONSE_TYPEHASH`, and `CLOSE_SURVEY_TYPEHASH` structs in Attestly.sol exactly.
 
-**Privy type note (D13):** Privy's `SignTypedDataParams` uses `chainId?: number` and `verifyingContract?: string`, NOT viem's `Hex` types. The typed data builder return types should match Privy's expected input, or the call site must cast. For example, `getEip712Domain()` may return `verifyingContract` as `` `0x${string}` `` (viem's `Hex`), but Privy accepts plain `string`. Ensure the types are compatible at the call site — either adjust the builder return type or cast when calling `signTypedData`.
+**Privy type note (D13):** Privy's `SignTypedDataParams` uses `chainId?: number` and `verifyingContract?: string`, NOT viem's `Hex` types. The typed data builder return types should match Privy's expected input, or the call site must cast. For example, `getAttestlyDomain()` may return `verifyingContract` as `` `0x${string}` `` (viem's `Hex`), but Privy accepts plain `string`. Ensure the types are compatible at the call site — either adjust the builder return type or cast when calling `signTypedData`.
 
 ---
 
@@ -348,6 +403,8 @@ Find the `survey.close` procedure and extend its Zod input:
 ```typescript
 signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "Must be a valid EIP-712 signature"),
 ```
+
+**Status transition (NI-1):** The procedure should transition the survey status from `PUBLISHED` to `CLOSING` (NOT `CLOSED`). The CLOSE_SURVEY job handler in 2-4b will transition `CLOSING -> CLOSED` on success, soft-delete IN_PROGRESS responses, and enqueue the AI summary generation job. These side effects are moved to the handler to ensure they only happen after on-chain confirmation.
 
 - [ ] **Step 2: Pass `signature` into the CLOSE_SURVEY job payload**
 
@@ -411,6 +468,7 @@ Publish a survey through the UI and confirm:
 - [ ] `BackgroundJob.payload` for CLOSE_SURVEY includes `{ surveyId, signature }`
 - [ ] `survey.publish` transitions `DRAFT -> PUBLISHING` (not `PUBLISHED`)
 - [ ] `response.submit` transitions `IN_PROGRESS -> SUBMITTING` (not `SUBMITTED`)
+- [ ] `survey.close` transitions `PUBLISHED -> CLOSING` (not `CLOSED`)
 - [ ] Server-side hash validation: `survey.publish` recomputes `surveyHash` and compares to client-provided value
 - [ ] Client component signs via Privy before calling `publishMutation.mutate`
 - [ ] Client component signs via Privy before calling `submitMutation.mutate`

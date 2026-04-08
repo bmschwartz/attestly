@@ -79,7 +79,7 @@ Existing guards (`response.ts:14` checks `status !== "PUBLISHED"`) block respons
 
 ## D7: `SUBMITTING` gating status for responses
 
-**Context:** Same pattern as `PUBLISHING` — creator dashboard should show which responses are fully on-chain vs still being anchored.
+**Context:** Same pattern as `PUBLISHING` — creator dashboard should show which responses are fully on-chain vs still being anchored. (This decision covers both D7 and former D10, which were identical.)
 
 **Decision:** Add `SUBMITTING` to `ResponseStatus`. Flow: `IN_PROGRESS → SUBMITTING` (after signing + enqueue) → `SUBMITTED` (after on-chain confirmation). Respondent sees "Submitting to blockchain..." state.
 
@@ -93,7 +93,7 @@ Existing guards (`response.ts:14` checks `status !== "PUBLISHED"`) block respons
 
 ## D8: Use `canonicalize` npm package (not hand-rolled)
 
-**Context:** Plan 2-3 hand-rolls RFC 8785 JCS implementation. An independent verifier using the widely-tested `canonicalize` npm package could produce different bytes on edge cases, breaking CID reproducibility.
+**Context:** Plan 2-3 hand-rolls RFC 8785 JCS implementation. An independent verifier using the widely-tested `canonicalize` npm package could produce different bytes on edge cases, breaking CID reproducibility. (This decision covers both D8 and former D11, which were identical.)
 
 **Decision:** Use the `canonicalize` npm package. Remove the hand-rolled `deterministic-json.ts` implementation. Simpler, community-tested, aligns with what external verifiers would use.
 
@@ -103,7 +103,7 @@ Existing guards (`response.ts:14` checks `status !== "PUBLISHED"`) block respons
 
 ## D9: Admin key is local-only, not in server env
 
-**Context:** `ADMIN_PRIVATE_KEY` (UUPS proxy owner) is for deploy/upgrade only. Storing it in server env makes a "cold" wallet warm.
+**Context:** `ADMIN_PRIVATE_KEY` (UUPS proxy owner) is for deploy/upgrade only. Storing it in server env makes a "cold" wallet warm. (This decision covers both D9 and former D12, which were identical.)
 
 **Decision:** Admin key lives in 1Password, pasted into a local `.env` for Hardhat deploy scripts only. Never in the running app's env. Remove `ADMIN_PRIVATE_KEY` from `src/env.js` schema and PLAN.md server env section. Hardhat config reads it from `process.env` directly (not validated by t3-env).
 
@@ -111,35 +111,6 @@ Existing guards (`response.ts:14` checks `status !== "PUBLISHED"`) block respons
 - PLAN.md: remove `ADMIN_PRIVATE_KEY` from env vars, add note about local-only deploy
 - 2-1a: Hardhat config reads `ADMIN_PRIVATE_KEY` from `process.env` with a guard (`if (!process.env.ADMIN_PRIVATE_KEY) throw ...` only in deploy scripts)
 - 2-4a: do NOT add `ADMIN_PRIVATE_KEY` to `src/env.js`
-
----
-
-## D10: `SUBMITTING` gating status for responses
-
-**Context:** Same as D3 but for responses. Creator dashboard should distinguish fully-verified responses from those still being anchored.
-
-**Decision:** Add `SUBMITTING` to `ResponseStatus`. Flow: `IN_PROGRESS → SUBMITTING` (after signing + enqueue) → `SUBMITTED` (after on-chain confirmation).
-
-**Plan impact:**
-- Schema: add `SUBMITTING` to `ResponseStatus` enum
-- 2-3b: `response.submit` transitions `IN_PROGRESS → SUBMITTING` not `SUBMITTED`
-- 2-4b: SUBMIT_RESPONSE handler transitions `SUBMITTING → SUBMITTED` on success
-
----
-
-## D11: Use `canonicalize` npm package
-
-**Decision:** Use the `canonicalize` npm package instead of hand-rolling RFC 8785. Simpler, community-tested, aligned with what external verifiers would use.
-
-**Plan impact:** 2-3 — replace hand-rolled `deterministic-json.ts` with `import canonicalize from "canonicalize"`. Add `canonicalize` to dependencies.
-
----
-
-## D12: Admin key is local-only (1Password)
-
-**Decision:** `ADMIN_PRIVATE_KEY` never touches the server. Deploy/upgrade via local Hardhat scripts with key from 1Password. Remove from `src/env.js` schema.
-
-**Plan impact:** PLAN.md env vars, 2-1a (Hardhat config), 2-4a (do not add to env.js).
 
 ---
 
@@ -161,8 +132,41 @@ Existing guards (`response.ts:14` checks `status !== "PUBLISHED"`) block respons
 
 ## D15: Gas costs — platform absorbs, free tier capped at 50 responses
 
-**Context:** Relayer pays gas for all txs. Free tier: max 5 surveys × 50 responses = 260 txs max (~$3 at Base L2 prices). Premium: uncapped responses, gas scales linearly.
+**Context:** Relayer pays gas for all txs. Free tier: max 5 surveys × 25 responses = 135 txs max (~$1.50 at Base L2 prices). Premium: uncapped responses, gas scales linearly.
 
 **Decision:** Platform cost. No per-tx billing in Phase 2. Relayer wallet needs funding proportional to premium survey volume. Monitor and revisit if gas costs grow.
 
 **No plan impact** (business/ops concern, not architecture).
+
+---
+
+## D16: Add `CLOSING` gating status for survey closure
+
+**Context:** Same pattern as `PUBLISHING` and `SUBMITTING` -- the `survey.close` tRPC procedure should not transition directly to `CLOSED`. The on-chain transaction may fail, and side effects (soft-delete of IN_PROGRESS responses, AI summary enqueue) should only happen after on-chain confirmation.
+
+**Decision (NI-1, Option A):** Add `CLOSING` to `SurveyStatus`. Flow: `PUBLISHED -> CLOSING` (after signing + enqueue in tRPC procedure) -> `CLOSED` (after on-chain confirmation in CLOSE_SURVEY handler). The handler also soft-deletes IN_PROGRESS responses and enqueues AI summary generation -- these side effects are moved from the tRPC procedure to the handler.
+
+**Plan impact:**
+- Schema: add `CLOSING` to `SurveyStatus` enum (in 2-3b Task 0 migration)
+- 2-3b Task 6: `survey.close` transitions `PUBLISHED -> CLOSING` not `CLOSED`
+- 2-4b CLOSE_SURVEY handler: transitions `CLOSING -> CLOSED`, sets `closedAt`, soft-deletes IN_PROGRESS responses, enqueues AI summary
+
+---
+
+## D17: Hide `PUBLISHING` surveys from non-creators
+
+**Context:** A survey in `PUBLISHING` status is not yet live -- the on-chain transaction hasn't confirmed. Non-creator users who happen to know the slug should not see a half-published survey.
+
+**Decision (NI-2, Option A):** Update `getBySlug` in `survey.ts` to return NOT_FOUND for `PUBLISHING` surveys when the requester is not the creator. Only the creator sees the "Publishing..." state.
+
+**Plan impact:** 2-3b Task 1 -- add visibility guard to `getBySlug`.
+
+---
+
+## D18: Count `SUBMITTING` toward free-tier response cap
+
+**Context:** A user could start multiple response submissions while previous ones are still being anchored on-chain. If the free-tier cap query only counts `SUBMITTED` responses, the user could exceed the cap by timing submissions during the `SUBMITTING` window.
+
+**Decision (NI-3, Option A):** Update the free-tier response count query in `response.start` to include `SUBMITTING` status alongside `SUBMITTED`: `status: { in: ["SUBMITTED", "SUBMITTING"] }`.
+
+**Plan impact:** 2-3b Task 2 -- update free-tier cap query.

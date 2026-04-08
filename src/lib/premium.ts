@@ -55,5 +55,5 @@ export function canUseFeature(
 
 export const FREE_TIER_LIMITS = {
   maxSurveys: 5,
-  maxResponsesPerSurvey: 50,
+  maxResponsesPerSurvey: 25,
 } as const;

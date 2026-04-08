@@ -62,8 +62,10 @@
 
   Also add `verificationResult VerificationResult?` to the `Survey` model relation.
 
+**Note:** The `VerificationResult` model and block number/timestamp fields are added in 2-4b's schema migration. Do not create a duplicate migration. If 2-4b has already been applied, these fields will already exist.
+
 - [ ] **Step 2: Run `pnpm prisma generate`** to update the Prisma client
-- [ ] **Step 3: Create and apply a migration** with `pnpm prisma migrate dev --name phase2_blockchain_fields`
+- [ ] **Step 3: Create and apply a migration** (only if 2-4b migration has not been applied yet) with `pnpm prisma migrate dev --name phase2_blockchain_fields`
 
 ---
 
