@@ -7,7 +7,7 @@
 | Phase | Description | Status | Plans |
 |-------|-------------|--------|-------|
 | [Phase 1](phase-1/PLAN.md) | Survey Platform (auth, builder, responses, dashboard, AI, premium) | ✅ Complete | 20 sub-plans |
-| [Phase 2](phase-2/PLAN.md) | On-Chain Verification (contract, EIP-712, IPFS, relayer, verification) | 📝 Planned | 9 sub-plans |
+| [Phase 2](phase-2/PLAN.md) | On-Chain Verification (contract, EIP-712, IPFS, relayer, verification) | 📝 Planned | 10 sub-plans |
 | Phase 3 | Private Surveys (AES-256-GCM, AWS KMS, verification bundles) | ⏳ Not started | — |
 | Phase 4 | Paid Surveys (USDC escrow, sybil resistance, delayed payouts) | ⏳ Not started | — |
 

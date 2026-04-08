@@ -92,7 +92,8 @@
       "Bash(pnpm test:*)",
       "Bash(timeout 4 pnpm worker)",
       "Bash(gtimeout 4 pnpm worker)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Read(//tmp/**)"
     ]
   }
 }
