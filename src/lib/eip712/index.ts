@@ -1,6 +1,13 @@
 // Domain
 export { getAttestlyDomain } from "./domain";
 
+// Typed data builders (for signTypedData / verifyTypedData)
+export {
+  buildPublishSurveyTypedData,
+  buildSubmitResponseTypedData,
+  buildCloseSurveyTypedData,
+} from "./domain";
+
 // Types
 export {
   publishSurveyTypes,

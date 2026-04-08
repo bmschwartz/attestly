@@ -293,9 +293,16 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
     return true; // Validation passed — caller shows confirmation dialog
   }, [survey, questions]);
 
-  const confirmPublish = useCallback(() => {
-    publishMutation.mutate({ id: initialSurvey.id });
-  }, [publishMutation, initialSurvey.id]);
+  const confirmPublish = useCallback(
+    (params: { signature: string; surveyHash: string }) => {
+      publishMutation.mutate({
+        id: initialSurvey.id,
+        signature: params.signature,
+        surveyHash: params.surveyHash,
+      });
+    },
+    [publishMutation, initialSurvey.id],
+  );
 
   return {
     surveyId: initialSurvey.id,
@@ -316,5 +323,6 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
     handlePublish,
     confirmPublish,
     isPublishing: publishMutation.isPending,
+    isSaving: updateSurveyMutation.isPending || upsertQuestionMutation.isPending,
   };
 }

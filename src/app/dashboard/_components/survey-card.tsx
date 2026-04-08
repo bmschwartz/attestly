@@ -19,7 +19,9 @@ function formatDate(date: Date | null | undefined): string {
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     DRAFT: "bg-gray-100 text-gray-700",
+    PUBLISHING: "bg-yellow-100 text-yellow-700",
     PUBLISHED: "bg-green-100 text-green-700",
+    CLOSING: "bg-orange-100 text-orange-700",
     CLOSED: "bg-red-100 text-red-700",
   };
 
@@ -134,6 +136,7 @@ function PublishedCard({ survey }: { survey: Survey }) {
       {showClose && (
         <CloseSurveyDialog
           surveyId={survey.id}
+          contentHash={survey.contentHash}
           onClose={() => setShowClose(false)}
         />
       )}
@@ -172,7 +175,13 @@ export function SurveyCard({ survey }: { survey: Survey }) {
   switch (survey.status) {
     case "DRAFT":
       return <DraftCard survey={survey} />;
+    case "PUBLISHING":
+      // Show as draft-like card while on-chain tx is pending
+      return <DraftCard survey={survey} />;
     case "PUBLISHED":
+      return <PublishedCard survey={survey} />;
+    case "CLOSING":
+      // Show as published card (without close button) while on-chain tx is pending
       return <PublishedCard survey={survey} />;
     case "CLOSED":
       return <ClosedCard survey={survey} />;

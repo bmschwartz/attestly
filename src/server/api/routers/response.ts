@@ -37,7 +37,7 @@ export const responseRouter = createTRPCRouter({
         const responseCount = await ctx.db.response.count({
           where: {
             surveyId: input.surveyId,
-            status: "SUBMITTED",
+            status: { in: ["SUBMITTED", "SUBMITTING"] },
             deletedAt: null,
           },
         });
@@ -103,7 +103,10 @@ export const responseRouter = createTRPCRouter({
     }),
 
   submit: protectedProcedure
-    .input(z.object({ responseId: z.uuid() }))
+    .input(z.object({
+      responseId: z.uuid(),
+      signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "Must be a valid EIP-712 signature"),
+    }))
     .mutation(async ({ ctx, input }) => {
       const response = await ctx.db.response.findUnique({
         where: { id: input.responseId },
@@ -135,12 +138,29 @@ export const responseRouter = createTRPCRouter({
         });
       }
 
-      return ctx.db.response.update({
-        where: { id: input.responseId },
-        data: {
-          status: "SUBMITTED",
-          submittedAt: new Date(),
-        },
+      return ctx.db.$transaction(async (tx) => {
+        // Transition to SUBMITTING (handler sets SUBMITTED on success)
+        const submitting = await tx.response.update({
+          where: { id: input.responseId },
+          data: {
+            status: "SUBMITTING",
+          },
+        });
+
+        // Enqueue SUBMIT_RESPONSE job
+        await tx.backgroundJob.create({
+          data: {
+            type: "SUBMIT_RESPONSE",
+            surveyId: response.surveyId,
+            responseId: response.id,
+            payload: {
+              responseId: response.id,
+              signature: input.signature,
+            },
+          },
+        });
+
+        return submitting;
       });
     }),
 

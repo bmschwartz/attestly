@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { api } from "~/trpc/react";
 import { useAutoSave } from "~/hooks/use-auto-save";
 import { SingleSelectInput } from "~/app/_components/inputs/single-select-input";
@@ -8,6 +9,18 @@ import { MultipleChoiceInput } from "~/app/_components/inputs/multiple-choice-in
 import { RatingInput } from "~/app/_components/inputs/rating-input";
 import { FreeTextInput } from "~/app/_components/inputs/free-text-input";
 import { useRouter } from "next/navigation";
+import { hashAnswers } from "~/lib/eip712/hash";
+import { computeBlindedId } from "~/lib/eip712/blinded-id";
+import { signSurveyResponse } from "~/lib/eip712/sign";
+import type { ResponseAnswer } from "~/lib/eip712/types";
+
+/** Map question type string to uint8 for EIP-712 hashing. */
+const QUESTION_TYPE_INDEX: Record<string, number> = {
+  SINGLE_SELECT: 0,
+  MULTIPLE_CHOICE: 1,
+  RATING: 2,
+  FREE_TEXT: 3,
+};
 
 interface Question {
   id: string;
@@ -25,6 +38,7 @@ interface SurveyRespondFormProps {
   surveyId: string;
   surveyTitle: string;
   slug: string;
+  contentHash: string | null;
   questions: Question[];
 }
 
@@ -32,10 +46,13 @@ export function SurveyRespondForm({
   surveyId,
   surveyTitle,
   slug,
+  contentHash,
   questions,
 }: SurveyRespondFormProps) {
   const router = useRouter();
   const utils = api.useUtils();
+  const { user } = usePrivy();
+  const { wallets } = useWallets();
 
   // --- Response lifecycle ---
   const [responseId, setResponseId] = useState<string | null>(null);
@@ -43,6 +60,7 @@ export function SurveyRespondForm({
   const [unansweredRequired, setUnansweredRequired] = useState<Set<string>>(new Set());
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSigning, setIsSigning] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [surveyClosed, setSurveyClosed] = useState(false);
   const questionRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
@@ -163,20 +181,79 @@ export function SurveyRespondForm({
     setShowConfirmDialog(true);
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
     if (!responseId) return;
     setShowConfirmDialog(false);
-    submitMutation.mutate(
-      { responseId },
-      {
-        onSuccess: () => {
-          router.push(`/s/${slug}/confirmation`);
+    setSubmitError(null);
+
+    const walletAddress = user?.wallet?.address;
+    if (!walletAddress || !contentHash) {
+      setSubmitError("Wallet not ready. Please try again.");
+      return;
+    }
+
+    setIsSigning(true);
+    try {
+      // Build answer data for hashing
+      const responseAnswers: ResponseAnswer[] = questions
+        .filter((q) => answers.has(q.id))
+        .map((q) => ({
+          questionIndex: q.index,
+          questionType: QUESTION_TYPE_INDEX[q.type] ?? 0,
+          value: answers.get(q.id) ?? "",
+        }))
+        .sort((a, b) => a.questionIndex - b.questionIndex);
+
+      const answersHash = hashAnswers(responseAnswers);
+      const blindedId = computeBlindedId(
+        walletAddress as `0x${string}`,
+        contentHash as `0x${string}`,
+      );
+
+      // Find wallet and sign
+      const embeddedWallet = wallets.find(
+        (w) => w.address.toLowerCase() === walletAddress.toLowerCase(),
+      );
+      if (!embeddedWallet) {
+        setSubmitError("Wallet not found. Please try again.");
+        setIsSigning(false);
+        return;
+      }
+      const provider = await embeddedWallet.getEthereumProvider();
+
+      const signature = await signSurveyResponse(
+        provider,
+        walletAddress as `0x${string}`,
+        {
+          surveyHash: contentHash as `0x${string}`,
+          blindedId,
+          answerCount: responseAnswers.length,
+          answersHash,
         },
-        onError: (error) => {
-          setSubmitError(error.message);
+      );
+
+      setIsSigning(false);
+
+      submitMutation.mutate(
+        { responseId, signature },
+        {
+          onSuccess: () => {
+            router.push(`/s/${slug}/confirmation`);
+          },
+          onError: (error) => {
+            setSubmitError(error.message);
+          },
         },
-      },
-    );
+      );
+    } catch (err: unknown) {
+      setIsSigning(false);
+      const message = err instanceof Error ? err.message : "Signing failed";
+      if (message.includes("rejected") || message.includes("denied")) {
+        setSubmitError("Signature rejected. Please try again.");
+      } else {
+        setSubmitError(message);
+      }
+    }
   };
 
   // --- Clear responses ---
@@ -266,10 +343,11 @@ export function SurveyRespondForm({
         <button
           type="button"
           onClick={handleSubmitClick}
-          disabled={submitMutation.isPending}
+          disabled={submitMutation.isPending || isSigning || !user?.wallet?.address}
           className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          title={!user?.wallet?.address ? "Wallet not ready" : undefined}
         >
-          {submitMutation.isPending ? "Submitting..." : "Submit"}
+          {isSigning ? "Signing..." : submitMutation.isPending ? "Submitting..." : "Submit"}
         </button>
       </header>
 
@@ -357,11 +435,13 @@ export function SurveyRespondForm({
         </button>
       </footer>
 
-      {/* --- Submitting Overlay --- */}
-      {submitMutation.isPending && (
+      {/* --- Signing / Submitting Overlay --- */}
+      {(isSigning || submitMutation.isPending) && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
-          <p className="mt-4 text-lg font-medium text-gray-700">Submitting your response...</p>
+          <p className="mt-4 text-lg font-medium text-gray-700">
+            {isSigning ? "Waiting for signature..." : "Submitting your response..."}
+          </p>
           <p className="mt-1 text-sm text-gray-500">Please don&apos;t close this page.</p>
         </div>
       )}
@@ -384,7 +464,7 @@ export function SurveyRespondForm({
               </button>
               <button
                 type="button"
-                onClick={handleConfirmSubmit}
+                onClick={() => void handleConfirmSubmit()}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 Confirm &amp; Submit

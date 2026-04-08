@@ -29,6 +29,7 @@ export default async function SurveyRespondPage({
       surveyId={survey.id}
       surveyTitle={survey.title}
       slug={slug}
+      contentHash={survey.contentHash}
       questions={survey.questions.map((q) => ({
         id: q.id,
         text: q.text,

@@ -183,6 +183,7 @@ function WizardEditor({
             questions={builder.questions}
             validation={stepValidation}
             onGoToStep={goToStep}
+            isSaving={builder.isSaving}
           />
         ),
       },

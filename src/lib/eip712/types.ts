@@ -77,7 +77,6 @@ export const submitResponseTypes = {
 export const closeSurveyTypes = {
   CloseSurvey: [
     { name: "surveyHash", type: "bytes32" },
-    { name: "creator", type: "address" },
   ],
 } as const;
 

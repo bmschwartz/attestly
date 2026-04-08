@@ -8,10 +8,20 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 import { canCreateSurvey } from "~/lib/premium";
+import { hashSurvey, buildSurveyMessage } from "~/lib/eip712/hash";
+import type { SurveyQuestion as EIP712SurveyQuestion } from "~/lib/eip712/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Map Prisma QuestionType enum string to uint8 for EIP-712 hashing. */
+const QUESTION_TYPE_INDEX: Record<string, number> = {
+  SINGLE_SELECT: 0,
+  MULTIPLE_CHOICE: 1,
+  RATING: 2,
+  FREE_TEXT: 3,
+};
 
 function slugify(text: string): string {
   return text
@@ -219,6 +229,10 @@ export const surveyRouter = createTRPCRouter({
       if (survey.status === "DRAFT") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
+      // PUBLISHING surveys are only visible to the creator
+      if (survey.status === "PUBLISHING" && survey.creator.id !== ctx.userId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+      }
 
       // Note: getBySlug intentionally returns all survey data for non-DRAFT surveys,
       // including private and invite-only surveys. The landing page must be visible
@@ -232,7 +246,11 @@ export const surveyRouter = createTRPCRouter({
    * 5. publish — validate and transition a DRAFT survey to PUBLISHED.
    */
   publish: protectedProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({
+      id: z.string(),
+      signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "Must be a valid EIP-712 signature"),
+      surveyHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, "Must be a valid bytes32 hex string"),
+    }))
     .mutation(async ({ ctx, input }) => {
       return ctx.db.$transaction(async (tx) => {
         const survey = await tx.survey.findUnique({
@@ -407,16 +425,72 @@ export const surveyRouter = createTRPCRouter({
           }
         }
 
-        // --- Transition to PUBLISHED ---
-        const published = await tx.survey.update({
+        // --- Server-side hash validation ---
+        const creator = await tx.user.findUnique({
+          where: { id: ctx.userId },
+          select: { walletAddress: true },
+        });
+        if (!creator?.walletAddress) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Wallet address not found for user",
+          });
+        }
+
+        const eip712Questions: EIP712SurveyQuestion[] = questions.map((q) => ({
+          text: q.text,
+          questionType: QUESTION_TYPE_INDEX[q.questionType] ?? 0,
+          position: q.position,
+          required: q.required,
+          options: Array.isArray(q.options) ? (q.options as string[]) : [],
+          minRating: q.minRating ?? 0,
+          maxRating: q.maxRating ?? 0,
+          maxLength: q.maxLength ?? 0,
+        }));
+
+        const serverMessage = buildSurveyMessage(
+          {
+            title: survey.title,
+            description: survey.description,
+            slug: survey.slug,
+            isPrivate: survey.isPrivate,
+            accessMode: survey.accessMode,
+            resultsVisibility: survey.resultsVisibility,
+          },
+          creator.walletAddress as `0x${string}`,
+          eip712Questions,
+        );
+        const serverHash = hashSurvey(serverMessage);
+
+        if (serverHash !== input.surveyHash) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Survey content has changed since you signed. Please reload and try again.",
+          });
+        }
+
+        // --- Transition to PUBLISHING (handler sets PUBLISHED on success) ---
+        const publishing = await tx.survey.update({
           where: { id: input.id },
           data: {
-            status: "PUBLISHED",
-            publishedAt: new Date(),
+            status: "PUBLISHING",
+            contentHash: serverHash,
           },
         });
 
-        return published;
+        // --- Enqueue PUBLISH_SURVEY job ---
+        await tx.backgroundJob.create({
+          data: {
+            type: "PUBLISH_SURVEY",
+            surveyId: survey.id,
+            payload: {
+              surveyId: survey.id,
+              signature: input.signature,
+            },
+          },
+        });
+
+        return publishing;
       });
     }),
 
@@ -458,7 +532,7 @@ export const surveyRouter = createTRPCRouter({
   listMine: protectedProcedure
     .input(
       z.object({
-        status: z.enum(["DRAFT", "PUBLISHED", "CLOSED"]).optional(),
+        status: z.enum(["DRAFT", "PUBLISHING", "PUBLISHED", "CLOSING", "CLOSED"]).optional(),
         limit: z.number().int().min(1).max(100).optional().default(20),
         cursor: z.string().optional(),
       }),
@@ -514,7 +588,10 @@ export const surveyRouter = createTRPCRouter({
    * 9. close — transition a PUBLISHED survey to CLOSED, soft-delete IN_PROGRESS responses.
    */
   close: protectedProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({
+      id: z.string(),
+      signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "Must be a valid EIP-712 signature"),
+    }))
     .mutation(async ({ ctx, input }) => {
       const survey = await ctx.db.survey.findUnique({
         where: { id: input.id },
@@ -537,34 +614,26 @@ export const surveyRouter = createTRPCRouter({
         });
       }
 
-      const closed = await ctx.db.$transaction(async (tx) => {
-        // Soft-delete IN_PROGRESS responses
-        await tx.response.updateMany({
-          where: { surveyId: input.id, status: "IN_PROGRESS" },
-          data: { deletedAt: new Date() },
-        });
-
-        // Close the survey
-        return tx.survey.update({
+      return ctx.db.$transaction(async (tx) => {
+        // Transition to CLOSING (handler sets CLOSED on success)
+        const closing = await tx.survey.update({
           where: { id: input.id },
-          data: { status: "CLOSED", closedAt: new Date() },
+          data: { status: "CLOSING" },
         });
-      });
 
-      // Queue AI summary generation if creator is premium
-      const subscription = await ctx.db.subscription.findUnique({
-        where: { userId: ctx.userId },
-      });
-      if (subscription && subscription.plan !== "FREE" && subscription.status === "ACTIVE") {
-        await ctx.db.backgroundJob.create({
+        // Enqueue CLOSE_SURVEY job
+        await tx.backgroundJob.create({
           data: {
-            type: "GENERATE_AI_SUMMARY",
-            surveyId: input.id,
-            payload: { surveyId: input.id },
+            type: "CLOSE_SURVEY",
+            surveyId: survey.id,
+            payload: {
+              surveyId: survey.id,
+              signature: input.signature,
+            },
           },
         });
-      }
 
-      return closed;
+        return closing;
+      });
     }),
 });

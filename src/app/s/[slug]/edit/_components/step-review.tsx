@@ -1,9 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { api } from "~/trpc/react";
+import { hashSurvey, buildSurveyMessage } from "~/lib/eip712/hash";
+import { signSurvey } from "~/lib/eip712/sign";
+import { buildPublishSurveyTypedData } from "~/lib/eip712/domain";
+import type { SurveyQuestion as EIP712SurveyQuestion } from "~/lib/eip712/types";
 import type { SurveyState } from "~/app/surveys/[id]/edit/_hooks/useSurveyBuilder";
 import type { QuestionDraft, ValidationError } from "~/app/surveys/[id]/edit/_lib/validation";
+
+/** Map question type string to uint8 for EIP-712 hashing. */
+const QUESTION_TYPE_INDEX: Record<string, number> = {
+  SINGLE_SELECT: 0,
+  MULTIPLE_CHOICE: 1,
+  RATING: 2,
+  FREE_TEXT: 3,
+};
 
 interface StepValidation {
   basics: ValidationError[];
@@ -17,6 +31,7 @@ interface StepReviewProps {
   questions: QuestionDraft[];
   validation: StepValidation;
   onGoToStep: (stepId: string) => void;
+  isSaving?: boolean;
 }
 
 // Estimate reading / answering time (very rough: ~30s per question)
@@ -145,8 +160,17 @@ export function StepReview({
   questions,
   validation,
   onGoToStep,
+  isSaving,
 }: StepReviewProps) {
   const router = useRouter();
+  const { user } = usePrivy();
+  const { wallets } = useWallets();
+  const [signingError, setSigningError] = useState<string | null>(null);
+  const [isSigning, setIsSigning] = useState(false);
+
+  const walletAddress = user?.wallet?.address;
+  const walletReady = !!walletAddress;
+
   const publishMutation = api.survey.publish.useMutation({
     onSuccess: () => {
       router.push(`/s/${survey.slug}`);
@@ -157,7 +181,83 @@ export function StepReview({
     validation.basics.length +
     validation.questions.length +
     validation.settings.length;
-  const canPublish = totalErrors === 0 && !publishMutation.isPending;
+  const canPublish =
+    totalErrors === 0 &&
+    !publishMutation.isPending &&
+    !isSigning &&
+    !isSaving &&
+    walletReady;
+
+  const handlePublish = async () => {
+    if (!walletAddress) return;
+    setSigningError(null);
+    setIsSigning(true);
+
+    try {
+      // Build EIP-712 survey message from form data
+      const eip712Questions: EIP712SurveyQuestion[] = questions.map((q) => ({
+        text: q.text,
+        questionType: QUESTION_TYPE_INDEX[q.questionType] ?? 0,
+        position: q.position,
+        required: q.required,
+        options: q.options,
+        minRating: q.minRating ?? 0,
+        maxRating: q.maxRating ?? 0,
+        maxLength: q.maxLength ?? 0,
+      }));
+
+      const surveyMessage = buildSurveyMessage(
+        {
+          title: survey.title,
+          description: survey.description,
+          slug: survey.slug,
+          isPrivate: survey.isPrivate,
+          accessMode: survey.accessMode,
+          resultsVisibility: survey.resultsVisibility,
+        },
+        walletAddress as `0x${string}`,
+        eip712Questions,
+      );
+
+      const surveyHash = hashSurvey(surveyMessage);
+
+      // Find the embedded wallet and get provider
+      const embeddedWallet = wallets.find(
+        (w) => w.address.toLowerCase() === walletAddress.toLowerCase(),
+      );
+      if (!embeddedWallet) {
+        setSigningError("Wallet not found. Please try again.");
+        setIsSigning(false);
+        return;
+      }
+      const provider = await embeddedWallet.getEthereumProvider();
+
+      // Sign the compact PublishSurvey typed data
+      const signature = await signSurvey(provider, walletAddress as `0x${string}`, {
+        surveyHash,
+        title: survey.title,
+        slug: survey.slug,
+        questionCount: questions.length,
+        creator: walletAddress as `0x${string}`,
+      });
+
+      // Call tRPC with signature
+      publishMutation.mutate({
+        id: surveyId,
+        signature,
+        surveyHash,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Signing failed";
+      if (message.includes("rejected") || message.includes("denied")) {
+        setSigningError("Signature rejected. Please try again.");
+      } else {
+        setSigningError(message);
+      }
+    } finally {
+      setIsSigning(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-2xl space-y-10">
@@ -229,16 +329,28 @@ export function StepReview({
 
       {/* Publish */}
       <section className="relative">
-        {publishMutation.isError && (
+        {(publishMutation.isError || signingError) && (
           <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-            {publishMutation.error.message ?? "Failed to publish. Please try again."}
+            {signingError ?? publishMutation.error?.message ?? "Failed to publish. Please try again."}
+          </p>
+        )}
+
+        {!walletReady && (
+          <p className="mb-3 text-xs text-amber-600">
+            Wallet not ready. Please wait...
+          </p>
+        )}
+
+        {isSaving && (
+          <p className="mb-3 text-xs text-gray-500">
+            Saving changes...
           </p>
         )}
 
         <button
           type="button"
           disabled={!canPublish}
-          onClick={() => publishMutation.mutate({ id: surveyId })}
+          onClick={() => void handlePublish()}
           className={[
             "w-full rounded-xl px-6 py-3 text-base font-semibold transition-colors",
             canPublish
@@ -246,7 +358,11 @@ export function StepReview({
               : "cursor-not-allowed bg-gray-200 text-gray-400",
           ].join(" ")}
         >
-          {publishMutation.isPending ? "Publishing…" : "Publish Survey"}
+          {isSigning
+            ? "Signing..."
+            : publishMutation.isPending
+              ? "Publishing..."
+              : "Publish Survey"}
         </button>
 
         {totalErrors > 0 && (
@@ -257,11 +373,11 @@ export function StepReview({
         )}
 
         {/* Publishing overlay */}
-        {publishMutation.isPending && (
+        {(publishMutation.isPending || isSigning) && (
           <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/70">
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-              Publishing…
+              {isSigning ? "Waiting for signature..." : "Publishing..."}
             </div>
           </div>
         )}

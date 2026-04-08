@@ -18,17 +18,24 @@ import {
 
 export interface CloseSurveyMessage {
   surveyHash: `0x${string}`;
-  creator: `0x${string}`;
 }
+
+/**
+ * Accept any EIP-1193 compatible provider.
+ * Privy's EIP1193Provider type is structurally compatible but nominally
+ * different from viem's, so we use a minimal structural type to bridge them.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyEIP1193Provider = { request: (...args: any[]) => Promise<any> };
 
 // ---------------------------------------------------------------------------
 // Wallet client helper
 // ---------------------------------------------------------------------------
 
-export function createPrivyWalletClient(provider: EIP1193Provider) {
+export function createPrivyWalletClient(provider: AnyEIP1193Provider) {
   return createWalletClient({
     chain: base,
-    transport: custom(provider),
+    transport: custom(provider as EIP1193Provider),
   });
 }
 
@@ -37,7 +44,7 @@ export function createPrivyWalletClient(provider: EIP1193Provider) {
 // ---------------------------------------------------------------------------
 
 export async function signSurvey(
-  provider: EIP1193Provider,
+  provider: AnyEIP1193Provider,
   account: `0x${string}`,
   message: PublishSurveySigningMessage,
 ): Promise<`0x${string}`> {
@@ -52,7 +59,7 @@ export async function signSurvey(
 }
 
 export async function signSurveyResponse(
-  provider: EIP1193Provider,
+  provider: AnyEIP1193Provider,
   account: `0x${string}`,
   message: SubmitResponseSigningMessage,
 ): Promise<`0x${string}`> {
@@ -67,7 +74,7 @@ export async function signSurveyResponse(
 }
 
 export async function signCloseSurvey(
-  provider: EIP1193Provider,
+  provider: AnyEIP1193Provider,
   account: `0x${string}`,
   message: CloseSurveyMessage,
 ): Promise<`0x${string}`> {
