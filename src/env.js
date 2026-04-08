@@ -28,6 +28,8 @@ export const env = createEnv({
    */
   client: {
     NEXT_PUBLIC_PRIVY_APP_ID: z.string(),
+    NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS: z.string().optional(),
+    NEXT_PUBLIC_CHAIN_ID: z.string().optional(),
   },
 
   /**
@@ -45,6 +47,9 @@ export const env = createEnv({
     CLOUDFLARE_R2_PUBLIC_BASE_URL: process.env.CLOUDFLARE_R2_PUBLIC_BASE_URL,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
+    NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS:
+      process.env.NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS,
+    NEXT_PUBLIC_CHAIN_ID: process.env.NEXT_PUBLIC_CHAIN_ID,
     NODE_ENV: process.env.NODE_ENV,
   },
   /**
