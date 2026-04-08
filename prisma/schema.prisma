@@ -283,6 +283,7 @@ model BackgroundJob {
   payload         Json      @default("{}")
   retryCount      Int       @default(0)
   lastAttemptedAt DateTime?
+  nextAttemptAt   DateTime? // null = ready immediately; set by releaseJob for deferral
   error           String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

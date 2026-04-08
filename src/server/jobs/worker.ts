@@ -1,4 +1,12 @@
-import { claimNextJob, completeJob, failJob, resetStaleJobs, isReadyForRetry } from "./queue";
+import {
+  claimNextJob,
+  completeJob,
+  failJob,
+  releaseJob,
+  resetStaleJobs,
+  isReadyForRetry,
+  getRetryDelay,
+} from "./queue";
 import { getHandler } from "./handlers";
 import type { JobType } from "../../../generated/prisma";
 
@@ -43,11 +51,12 @@ export function startWorker(options: WorkerOptions = {}): {
 
       if (!job) return false;
 
-      // Check if the job is ready for retry (respects backoff)
-      if (!isReadyForRetry(job.retryCount, job.lastAttemptedAt)) {
-        // Not ready yet — release back to PENDING
-        // (it was just claimed, so set it back)
-        await failJob(job.id, job.error ?? "Backoff not elapsed");
+      // Check if the job is ready for retry (respects per-type backoff)
+      if (!isReadyForRetry(job.retryCount, job.lastAttemptedAt, job.type)) {
+        // Not ready yet — release without burning retry count.
+        // Defer by the remaining backoff window so we don't re-claim immediately.
+        const delay = getRetryDelay(job.retryCount, job.type);
+        await releaseJob(job.id, delay);
         return false;
       }
 

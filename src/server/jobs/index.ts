@@ -3,11 +3,15 @@ export {
   claimNextJob,
   completeJob,
   failJob,
+  releaseJob,
   resetStaleJobs,
+  getMaxRetries,
   getRetryDelay,
   isReadyForRetry,
-  MAX_RETRIES,
-  RETRY_BACKOFF_MS,
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_BACKOFF_MS,
+  BLOCKCHAIN_MAX_RETRIES,
+  BLOCKCHAIN_BACKOFF_MS,
   STALE_JOB_TIMEOUT_MINUTES,
 } from "./queue";
 

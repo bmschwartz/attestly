@@ -1,11 +1,30 @@
 import { db } from "./db";
 import type { JobType } from "../../../generated/prisma";
 
-/** Backoff schedule in milliseconds for retries: 5s, 30s, 5min */
-const RETRY_BACKOFF_MS = [5_000, 30_000, 300_000] as const;
+/** Default backoff schedule in milliseconds for retries: 5s, 30s, 5min */
+const DEFAULT_BACKOFF_MS = [5_000, 30_000, 300_000] as const;
 
-/** Maximum number of retry attempts before marking as FAILED */
-const MAX_RETRIES = 3;
+/** Default maximum number of retry attempts before marking as FAILED */
+const DEFAULT_MAX_RETRIES = 3;
+
+/** Blockchain jobs get extended retry budget (~50 minutes total) */
+const BLOCKCHAIN_MAX_RETRIES = 10;
+const BLOCKCHAIN_BACKOFF_MS = [
+  5_000, // 5s
+  15_000, // 15s
+  30_000, // 30s
+  60_000, // 1m
+  120_000, // 2m
+  300_000, // 5m
+  600_000, // 10m
+  1_800_000, // 30m
+] as const;
+
+const BLOCKCHAIN_JOB_TYPES: Set<string> = new Set([
+  "PUBLISH_SURVEY",
+  "SUBMIT_RESPONSE",
+  "CLOSE_SURVEY",
+]);
 
 /** Jobs processing longer than this are considered stale (in minutes) */
 const STALE_JOB_TIMEOUT_MINUTES = 60;
@@ -43,10 +62,12 @@ export async function createJob(input: CreateJobInput) {
  * Returns the claimed job, or null if no jobs are available.
  */
 export async function claimNextJob(jobTypes?: JobType[]) {
-  // Find the oldest pending job
+  const now = new Date();
+  // Find the oldest pending job whose deferral window (if any) has expired
   const pendingJob = await db.backgroundJob.findFirst({
     where: {
       status: "PENDING",
+      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
       ...(jobTypes ? { type: { in: jobTypes } } : {}),
     },
     orderBy: { createdAt: "asc" },
@@ -94,8 +115,9 @@ export async function failJob(jobId: string, errorMessage: string) {
   if (!job) throw new Error(`Job ${jobId} not found`);
 
   const nextRetryCount = job.retryCount + 1;
+  const maxRetries = getMaxRetries(job.type);
 
-  if (nextRetryCount >= MAX_RETRIES) {
+  if (nextRetryCount >= maxRetries) {
     // Final failure — no more retries
     return db.backgroundJob.update({
       where: { id: jobId },
@@ -119,27 +141,66 @@ export async function failJob(jobId: string, errorMessage: string) {
 }
 
 /**
- * Get the backoff delay in milliseconds for the given retry count.
- * Returns 0 for the first attempt (no delay).
+ * Release a job back to PENDING without incrementing retryCount.
+ * Use for:
+ * - Backoff not yet elapsed (job was claimed but not ready)
+ * - Dependency not yet met (dep-blocked, try again after delay)
+ *
+ * @param jobId   The job to release
+ * @param delayMs How long to defer before the job is eligible again (default: 0)
  */
-export function getRetryDelay(retryCount: number): number {
-  if (retryCount <= 0) return 0;
-  const index = Math.min(retryCount - 1, RETRY_BACKOFF_MS.length - 1);
-  return RETRY_BACKOFF_MS[index]!;
+export async function releaseJob(jobId: string, delayMs = 0): Promise<void> {
+  const nextAttemptAt = delayMs > 0 ? new Date(Date.now() + delayMs) : null;
+  await db.backgroundJob.update({
+    where: { id: jobId },
+    data: {
+      status: "PENDING",
+      nextAttemptAt,
+    },
+  });
 }
 
 /**
- * Check if a job should be retried now based on its retry count
- * and lastAttemptedAt timestamp (exponential backoff).
+ * Get the maximum retry count for a given job type.
+ * Blockchain jobs get an extended budget; all others use the default.
+ */
+export function getMaxRetries(jobType: string): number {
+  return BLOCKCHAIN_JOB_TYPES.has(jobType)
+    ? BLOCKCHAIN_MAX_RETRIES
+    : DEFAULT_MAX_RETRIES;
+}
+
+/**
+ * Get the backoff delay in milliseconds for the given retry count.
+ * Returns 0 for the first attempt (no delay).
+ * Blockchain job types use an extended backoff schedule.
+ */
+export function getRetryDelay(
+  retryCount: number,
+  jobType?: string,
+): number {
+  if (retryCount <= 0) return 0;
+  const schedule =
+    jobType && BLOCKCHAIN_JOB_TYPES.has(jobType)
+      ? BLOCKCHAIN_BACKOFF_MS
+      : DEFAULT_BACKOFF_MS;
+  const index = Math.min(retryCount - 1, schedule.length - 1);
+  return schedule[index]!;
+}
+
+/**
+ * Check if a job should be retried now based on its retry count,
+ * lastAttemptedAt timestamp, and job type (for per-type backoff).
  */
 export function isReadyForRetry(
   retryCount: number,
   lastAttemptedAt: Date | null,
+  jobType?: string,
 ): boolean {
   if (retryCount === 0) return true;
   if (!lastAttemptedAt) return true;
 
-  const delay = getRetryDelay(retryCount);
+  const delay = getRetryDelay(retryCount, jobType);
   const readyAt = new Date(lastAttemptedAt.getTime() + delay);
   return new Date() >= readyAt;
 }
@@ -174,4 +235,10 @@ export async function resetStaleJobs(): Promise<number> {
   return result.count;
 }
 
-export { MAX_RETRIES, RETRY_BACKOFF_MS, STALE_JOB_TIMEOUT_MINUTES };
+export {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_BACKOFF_MS,
+  BLOCKCHAIN_MAX_RETRIES,
+  BLOCKCHAIN_BACKOFF_MS,
+  STALE_JOB_TIMEOUT_MINUTES,
+};
