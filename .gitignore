@@ -56,5 +56,7 @@ typechain-types/
 docs/**/reviews/
 docs/**/REVIEW.md
 
+.claude/reviews/
+
 # git worktrees
 .worktrees/
