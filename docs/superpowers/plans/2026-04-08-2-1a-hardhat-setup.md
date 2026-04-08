@@ -59,7 +59,13 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY ?? "";
+// Two separate wallets for different roles:
+// - ADMIN_PRIVATE_KEY: Owns the UUPS proxy (upgrade authority). Cold storage in production.
+// - RELAYER_PRIVATE_KEY: Submits transactions (publishSurvey, submitResponse, etc.). Hot wallet.
+//   In production, the relayer uses AWS KMS instead of a raw private key.
+// Deploy scripts use the admin wallet. The relayer uses the relayer wallet at runtime.
+const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY ?? "";
+const RELAYER_PRIVATE_KEY = process.env.RELAYER_PRIVATE_KEY ?? "";
 const BASESCAN_API_KEY = process.env.BASESCAN_API_KEY ?? "";
 
 const config: HardhatUserConfig = {
@@ -80,12 +86,13 @@ const config: HardhatUserConfig = {
     baseSepolia: {
       url: process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org",
       chainId: 84532,
-      accounts: DEPLOYER_PRIVATE_KEY ? [DEPLOYER_PRIVATE_KEY] : [],
+      // Admin wallet first (used by deploy scripts), relayer wallet second
+      accounts: [ADMIN_PRIVATE_KEY, RELAYER_PRIVATE_KEY].filter(Boolean),
     },
     base: {
       url: process.env.BASE_RPC_URL ?? "https://mainnet.base.org",
       chainId: 8453,
-      accounts: DEPLOYER_PRIVATE_KEY ? [DEPLOYER_PRIVATE_KEY] : [],
+      accounts: [ADMIN_PRIVATE_KEY, RELAYER_PRIVATE_KEY].filter(Boolean),
     },
   },
   etherscan: {
@@ -129,6 +136,7 @@ Key decisions:
 - `paths.sources` points to `contracts/` at project root
 - `paths.tests` points to `contracts/test/` for contract-specific tests
 - `cache_hardhat` avoids collision with any Next.js cache directory
+- Two separate wallets: `ADMIN_PRIVATE_KEY` (cold, owns proxy, used by deploy scripts) and `RELAYER_PRIVATE_KEY` (hot, submits transactions at runtime). Admin is accounts[0], relayer is accounts[1]. In production, admin is cold storage and relayer uses AWS KMS.
 
 ---
 

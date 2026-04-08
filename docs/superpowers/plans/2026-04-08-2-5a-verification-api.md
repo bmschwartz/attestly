@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement verification tRPC procedures and cached integrity check logic for on-chain survey verification.
+**Goal:** Implement verification tRPC procedures that return proof data (tx hashes, block numbers, IPFS CIDs, Basescan links) for the verification page. No live hash recomputation in this phase.
 
-**Architecture:** A `verificationRouter` in `src/server/api/routers/verification.ts` exposes three query procedures for fetching verification status, survey proofs, and response proofs. Checks 1-3 are computed live by reading from the Base contract via ethers.js. Check 4 (Response Integrity) is cached in the database, populated by the `VERIFY_RESPONSES` background job when a survey closes.
+**Architecture:** A `verificationRouter` in `src/server/api/routers/verification.ts` exposes three query procedures for fetching verification status, survey proofs, and response proofs. The API returns stored proof data (tx hashes, block numbers, IPFS CIDs) from the database and constructs Basescan links. Live hash recomputation and full integrity checks are deferred to the pre-launch phase (Sub-Plan 2-6) along with open-source verification tools.
 
 **Tech Stack:** tRPC v11, Zod v4, Prisma 7, ethers.js, Base (L2)
 
@@ -45,25 +45,26 @@
 **Files:**
 - Create: `src/server/lib/verification.ts`
 
-- [ ] **Step 1: Create the verification lib file** with helper functions for each check
-- [ ] **Step 2: Implement `checkSurveyContentIntegrity(surveyHash, surveyData)`**
-  - Recompute the EIP-712 hash from the survey content stored in the database
-  - Use the same EIP-712 domain and types from the blockchain design spec
-  - Compare the recomputed hash to the on-chain `surveyHash` by calling `getSurvey(surveyHash)` on the contract
-  - Return `{ status: 'pass' | 'fail', expected: string, actual: string, blockNumber: number }`
-- [ ] **Step 3: Implement `checkResponseCount(surveyHash, platformCount)`**
-  - Call `getResponseCount(surveyHash)` on the contract
-  - Compare with the platform count from the database
-  - Return `{ status: 'pass' | 'fail' | 'mismatch', onChainCount: number, platformCount: number }`
-- [ ] **Step 4: Implement `checkSurveyClosure(surveyHash)`**
-  - Call `getSurvey(surveyHash)` on the contract and check the `closed` flag
-  - Query for the `SurveyClosed` event to get the block number and timestamp
-  - Return `{ status: 'pass' | 'fail' | 'not_closed', closedAt: number | null, blockNumber: number | null }`
+- [ ] **Step 1: Create the verification lib file** with helper functions for assembling proof data
+
+**Note:** This phase does NOT implement live hash recomputation or live on-chain reads for verification checks. Instead, it returns stored proof data from the database. Full verification checks (live hash recomputation, contract reads) are deferred to the pre-launch phase (Sub-Plan 2-6) along with the open-source verification tools.
+
+- [ ] **Step 2: Implement `getSurveyProofData(surveyId)`**
+  - Load survey record with `contentHash`, `ipfsCid`, `publishTxHash`, `closeTxHash`, `verificationStatus`
+  - Load associated background job records for block numbers and timestamps
+  - Construct Basescan links from tx hashes
+  - Return `{ surveyHash, ipfsCid, publishTxHash, closeTxHash, blockNumbers, basescanLinks, verificationStatus }`
+- [ ] **Step 3: Implement `getResponseProofData(responseId)`**
+  - Load response record with `blindedId`, `ipfsCid`, `submitTxHash`, `verificationStatus`
+  - Construct Basescan link from tx hash
+  - Return `{ blindedId, ipfsCid, submitTxHash, blockNumber, basescanLink, verificationStatus }`
+- [ ] **Step 4: Implement `getResponseCountSummary(surveyId)`**
+  - Count verified responses from database
+  - Return `{ platformCount, verifiedCount }` (no live on-chain comparison in this phase)
 - [ ] **Step 5: Implement `getCachedResponseIntegrity(surveyId)`**
   - Read the cached `VerificationResult` from the database for check 4
   - Return the stored result with `verifiedAt` timestamp
   - If no cached result exists, return `{ status: 'pending', message: 'Verification not yet run' }`
-- [ ] **Step 6: Create a contract client helper** that instantiates an ethers.js provider (Base RPC) and contract instance with the Attestly ABI. This should be shared across all live checks.
 
 ---
 
@@ -75,9 +76,9 @@
 - [ ] **Step 1: Create the router file** with the tRPC router boilerplate
 - [ ] **Step 2: Implement `verification.getStatus`** — public query
   - Input: `{ slug: string }` (Zod validated)
-  - Look up the survey by slug, get its `surveyHash`
-  - Run all 4 checks in parallel: checks 1-3 live from contract, check 4 from cache
-  - Return: `{ surveyHash: string, checks: [{ name: string, status: string, details: object }] }`
+  - Look up the survey by slug, get its `surveyHash` and verification status
+  - Return stored proof data: tx hashes, block numbers, IPFS CIDs, Basescan links, verification status
+  - No live on-chain reads or hash recomputation in this phase
   - Handle the case where the survey has no on-chain data yet (`verificationStatus = NONE | PENDING`)
 - [ ] **Step 3: Implement `verification.getSurveyProof`** — public query
   - Input: `{ slug: string }` (Zod validated)
@@ -95,8 +96,8 @@
   - Return null/empty if the user has not responded to this survey
 - [ ] **Step 5: Add proper error handling**
   - If the survey does not exist: throw `TRPCError` with `NOT_FOUND`
-  - If on-chain reads fail (RPC error): return degraded results with `status: 'unavailable'` rather than throwing
-  - If the contract has no data for this survey hash: return `status: 'not_published'`
+  - If the survey has no on-chain data: return `status: 'not_published'` with empty proof data
+  - No live on-chain reads to fail in this phase -- all data comes from the database
 
 ---
 

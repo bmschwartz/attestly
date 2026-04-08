@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the verification page and add verification status indicators to survey cards and landing pages.
+**Goal:** Build the verification page that displays proof data (verification status, tx hashes, block numbers, Basescan links, IPFS CIDs) and add verification status indicators to survey cards and landing pages. No live hash recomputation in the browser.
 
-**Architecture:** The verification page at `/s/[slug]/verify` fetches data from the `verification` tRPC router (2-5a) and renders 4 check items with live status. A reusable `VerificationBadge` component is used on survey cards and the survey landing page. All on-chain data is fetched server-side via tRPC queries.
+**Architecture:** The verification page at `/s/[slug]/verify` fetches stored proof data from the `verification` tRPC router (2-5a) and displays it. The page shows verification status, transaction hashes with Basescan links, block numbers, and IPFS CIDs. Live hash recomputation and independent verification checks are deferred to the pre-launch phase (Sub-Plan 2-6). A reusable `VerificationBadge` component is used on survey cards and the survey landing page.
 
 **Tech Stack:** Next.js 15 (App Router), React 19, TailwindCSS, tRPC v11
 
@@ -56,26 +56,29 @@
   - Display survey title prominently
   - Show the full survey hash in a monospace font with a copy button
   - Include a link back to the survey page (`/s/[slug]`)
-- [ ] **Step 2: Create CheckItem component** with props:
-  - `name`: string (check name)
-  - `status`: `'pass' | 'fail' | 'pending' | 'unavailable' | 'not_closed' | 'not_published'`
-  - `details`: object (check-specific details)
+- [ ] **Step 2: Create CheckItem component** — a proof data display row with props:
+  - `label`: string (e.g., "Survey Published", "Survey Closed", "Response Count")
+  - `status`: `'verified' | 'pending' | 'not_published'`
+  - `txHash`: string | null
   - `blockNumber`: number | null
   - `timestamp`: number | null
   - `basescanLink`: string | null
+  - `ipfsCid`: string | null
 - [ ] **Step 3: Implement CheckItem rendering:**
-  - Status icon: green checkmark for pass, red X for fail, amber spinner for pending, gray dash for unavailable
-  - Check name and description
-  - Details section: varies per check type (hash comparison, count comparison, closure timestamp, cached verification date)
-  - Block number and Basescan link when available (external link icon)
+  - Status icon: green checkmark for verified, amber spinner for pending, gray dash for not published
+  - Label and status text
+  - Transaction hash (truncated, with copy button) and Basescan link (external link icon)
+  - Block number and timestamp when available
+  - IPFS CID with gateway link when available
+  - **Note:** No live hash recomputation or on-chain reads. All data comes from the database via the API.
 - [ ] **Step 4: Create OnChainDetails component**
-  - Display tx hashes, block numbers, and timestamps from `verification.getSurveyProof`
+  - Display proof data from `verification.getSurveyProof`: tx hashes, block numbers, timestamps, Basescan links, IPFS CIDs
   - Each transaction: type label, truncated tx hash (with copy), block number, timestamp, Basescan link
   - Section for survey publication tx and survey closure tx (if closed)
-- [ ] **Step 5: Special handling for Check 4 (cached)**
+- [ ] **Step 5: Special handling for cached response integrity check**
   - Show "Last verified: [date]" with the `verifiedAt` timestamp
   - If not yet verified, show "Verification will run when the survey closes"
-  - Include a note: "Run independent verification using the open-source tools below"
+  - **Note:** Full independent verification (live hash recomputation) is deferred to the pre-launch phase (Sub-Plan 2-6)
 
 ---
 
@@ -86,20 +89,18 @@
 
 - [ ] **Step 1: Replace the stub** with a full server component page
 - [ ] **Step 2: Fetch verification data** using tRPC:
-  - Call `verification.getStatus({ slug })` for the 4 checks
-  - Call `verification.getSurveyProof({ slug })` for on-chain details
-- [ ] **Step 3: Compose the page layout** following the component structure from the spec:
+  - Call `verification.getStatus({ slug })` for verification status and proof data
+  - Call `verification.getSurveyProof({ slug })` for tx hashes, block numbers, Basescan links, IPFS CIDs
+- [ ] **Step 3: Compose the page layout:**
   ```
   VerificationHeader (survey title, hash)
-  CheckList (4 CheckItem components)
-  OnChainDetails (block numbers, tx hashes, Basescan links)
-  IndependentVerificationLinks (CLI, static page, GitHub)
+  ProofDataList (CheckItem components showing tx hashes, block numbers, Basescan links, IPFS CIDs)
+  OnChainDetails (detailed transaction info)
   ```
-- [ ] **Step 4: Add the Independent Verification Links section**
-  - Link to the `@attestly/verify` npm package / CLI
-  - Link to the static verification page (GitHub Pages)
-  - Link to the GitHub repo for source code
-  - Brief explanation: "These tools verify survey integrity without relying on Attestly's servers"
+  **Note:** No live hash recomputation in the browser. The page displays stored proof data only.
+- [ ] **Step 4: Add a "Full Verification" note section**
+  - Brief note: "Full independent verification tools (CLI, static page) will be available before launch"
+  - This section is a placeholder -- the actual tools are deferred to the pre-launch phase (Sub-Plan 2-6)
 - [ ] **Step 5: Handle edge cases**
   - Survey not found: 404 page
   - Survey not yet published on-chain: show "This survey has not been published on-chain yet" with pending status

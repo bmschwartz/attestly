@@ -2,13 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create a standalone verification CLI and static verification page for fully independent, trustless survey verification. This plan can be deferred to post-launch --- it is independent of the rest of Phase 2.
+**Goal:** Create a standalone verification CLI and static verification page for fully independent, trustless survey verification, including live hash recomputation that was deferred from 2-5a/2-5b.
 
 **Architecture:** A separate `packages/verify/` package within the monorepo. The CLI connects directly to a Base RPC endpoint and public IPFS gateways --- no Attestly server involved. The static HTML page does the same verification entirely client-side using ethers.js from CDN. The CLI uses survey HASH only (not slug) for trustless verification; slug-to-hash requires Attestly's API.
 
 **Tech Stack:** TypeScript, ethers.js, Node.js CLI (tsx), static HTML + vanilla JS
 
 **Spec reference:** `docs/superpowers/specs/2026-04-05-blockchain-verification-design.md`
+
+> **DEFERRED TO PRE-LAUNCH PHASE.** This plan is deferred to the pre-launch phase per design decision from 2026-04-08 grill-me session. The Phase 2 verification page (2-5a/2-5b) ships with a minimal display of stored proof data (tx hashes, block numbers, Basescan links, IPFS CIDs) without live hash recomputation in the browser. Full independent verification -- live hash recomputation, on-chain reads from the browser, CLI tools, and the static verification page -- will be implemented in this plan before launch.
 
 **Note:** This plan is independent of Sub-Plans 2-5a and 2-5b. It can be implemented at any time.
 

@@ -82,16 +82,23 @@ contract Attestly is
     mapping(bytes32 => mapping(bytes32 => bool)) private _responses;
 
     // ──────────────────────────────────────────────
-    // EIP-712 Type Hashes
+    // EIP-712 Type Hashes (compact signing payloads)
     // ──────────────────────────────────────────────
 
-    /// @dev keccak256("PublishSurvey(bytes32 surveyHash,string ipfsCid,address creator)")
+    /// @dev Users sign a COMPACT summary struct, not the full survey data.
+    ///      The surveyHash is a precomputed deterministic hash of the full content.
+    ///      The contract verifies the signature over this compact struct.
+    ///
+    /// keccak256("PublishSurvey(bytes32 surveyHash,string title,string slug,uint8 questionCount,address creator)")
     bytes32 public constant PUBLISH_SURVEY_TYPEHASH =
-        keccak256("PublishSurvey(bytes32 surveyHash,string ipfsCid,address creator)");
+        keccak256("PublishSurvey(bytes32 surveyHash,string title,string slug,uint8 questionCount,address creator)");
 
-    /// @dev keccak256("SubmitResponse(bytes32 surveyHash,string ipfsCid)")
+    /// @dev Users sign a COMPACT summary struct for responses.
+    ///      The surveyHash and answersHash are precomputed deterministic hashes.
+    ///
+    /// keccak256("SubmitResponse(bytes32 surveyHash,bytes32 blindedId,uint8 answerCount,bytes32 answersHash)")
     bytes32 public constant SUBMIT_RESPONSE_TYPEHASH =
-        keccak256("SubmitResponse(bytes32 surveyHash,string ipfsCid)");
+        keccak256("SubmitResponse(bytes32 surveyHash,bytes32 blindedId,uint8 answerCount,bytes32 answersHash)");
 
     /// @dev keccak256("CloseSurvey(bytes32 surveyHash)")
     bytes32 public constant CLOSE_SURVEY_TYPEHASH =
@@ -146,20 +153,28 @@ contract Attestly is
 
     /**
      * @notice Publish a survey on-chain.
-     * @dev Verifies EIP-712 signature recovers to the provided creator address.
-     *      Reverts if the survey hash already exists.
+     * @dev Verifies EIP-712 signature over a COMPACT summary struct:
+     *      PublishSurvey(bytes32 surveyHash, string title, string slug, uint8 questionCount, address creator)
      *
-     *      EIP-712 struct: PublishSurvey(bytes32 surveyHash, string ipfsCid, address creator)
+     *      The surveyHash is a precomputed deterministic hash of the full survey content.
+     *      The compact struct gives the user a human-readable signing prompt while the
+     *      contract verifies the signature without needing full survey data on-chain.
      *
-     * @param surveyHash EIP-712 hash of the survey content
+     * @param surveyHash Deterministic hash of the full survey content
      * @param ipfsCid IPFS CID of the pinned survey JSON
      * @param creator Address of the survey creator
-     * @param signature EIP-712 signature from the creator
+     * @param title Survey title (included in compact signing payload)
+     * @param slug Survey slug (included in compact signing payload)
+     * @param questionCount Number of questions (included in compact signing payload)
+     * @param signature EIP-712 signature from the creator over the compact struct
      */
     function publishSurvey(
         bytes32 surveyHash,
         string calldata ipfsCid,
         address creator,
+        string calldata title,
+        string calldata slug,
+        uint8 questionCount,
         bytes calldata signature
     ) external override {
         // Survey must not already exist
@@ -167,12 +182,14 @@ contract Attestly is
             revert SurveyAlreadyExists(surveyHash);
         }
 
-        // Verify EIP-712 signature recovers to the claimed creator
+        // Verify EIP-712 signature over the compact struct
         bytes32 structHash = keccak256(
             abi.encode(
                 PUBLISH_SURVEY_TYPEHASH,
                 surveyHash,
-                keccak256(bytes(ipfsCid)),
+                keccak256(bytes(title)),
+                keccak256(bytes(slug)),
+                questionCount,
                 creator
             )
         );
@@ -198,21 +215,26 @@ contract Attestly is
 
     /**
      * @notice Submit a response on-chain.
-     * @dev Recovers the signer from the EIP-712 signature, computes the blinded ID
-     *      as keccak256(abi.encodePacked(signer, surveyHash)), and verifies it matches
-     *      the provided blindedId. Enforces uniqueness per blinded ID per survey.
+     * @dev Recovers the signer from the EIP-712 signature over a COMPACT summary struct:
+     *      SubmitResponse(bytes32 surveyHash, bytes32 blindedId, uint8 answerCount, bytes32 answersHash)
      *
-     *      EIP-712 struct: SubmitResponse(bytes32 surveyHash, string ipfsCid)
+     *      The answersHash is a precomputed deterministic hash of the full answer content.
+     *      The contract computes the blinded ID on-chain from the recovered signer and
+     *      verifies it matches the provided blindedId. Enforces uniqueness per blinded ID per survey.
      *
      * @param surveyHash The target survey
      * @param blindedId Expected blinded identifier
      * @param ipfsCid IPFS CID of the pinned response data
-     * @param signature EIP-712 signature from the respondent
+     * @param answerCount Number of answers (included in compact signing payload)
+     * @param answersHash Deterministic hash of the full answer content
+     * @param signature EIP-712 signature from the respondent over the compact struct
      */
     function submitResponse(
         bytes32 surveyHash,
         bytes32 blindedId,
         string calldata ipfsCid,
+        uint8 answerCount,
+        bytes32 answersHash,
         bytes calldata signature
     ) external override {
         // Survey must exist
@@ -226,12 +248,14 @@ contract Attestly is
             revert SurveyAlreadyClosed(surveyHash);
         }
 
-        // Verify EIP-712 signature and recover signer
+        // Verify EIP-712 signature over the compact struct and recover signer
         bytes32 structHash = keccak256(
             abi.encode(
                 SUBMIT_RESPONSE_TYPEHASH,
                 surveyHash,
-                keccak256(bytes(ipfsCid))
+                blindedId,
+                answerCount,
+                answersHash
             )
         );
         bytes32 digest = _hashTypedDataV4(structHash);
@@ -364,10 +388,10 @@ contract Attestly is
 
 - [ ] **Step 1: Verify that the PUBLISH_SURVEY_TYPEHASH, SUBMIT_RESPONSE_TYPEHASH, and CLOSE_SURVEY_TYPEHASH constants match the struct definitions**
 
-The type hashes must exactly match the EIP-712 struct encoding:
+The type hashes must exactly match the EIP-712 compact struct encoding:
 
-- `PUBLISH_SURVEY_TYPEHASH` = `keccak256("PublishSurvey(bytes32 surveyHash,string ipfsCid,address creator)")` — note: `string` fields are hashed with `keccak256(bytes(value))` in the struct encoding
-- `SUBMIT_RESPONSE_TYPEHASH` = `keccak256("SubmitResponse(bytes32 surveyHash,string ipfsCid)")` — signer is recovered, not included in the signed struct
+- `PUBLISH_SURVEY_TYPEHASH` = `keccak256("PublishSurvey(bytes32 surveyHash,string title,string slug,uint8 questionCount,address creator)")` — compact summary struct; `string` fields are hashed with `keccak256(bytes(value))` in the struct encoding; `surveyHash` is a precomputed hash of the full survey content
+- `SUBMIT_RESPONSE_TYPEHASH` = `keccak256("SubmitResponse(bytes32 surveyHash,bytes32 blindedId,uint8 answerCount,bytes32 answersHash)")` — compact summary struct; signer is recovered, not included in the signed struct; `answersHash` is a precomputed hash of the full answer content
 - `CLOSE_SURVEY_TYPEHASH` = `keccak256("CloseSurvey(bytes32 surveyHash)")` — minimal struct, signer is recovered
 
 Verify by checking that the `abi.encode` calls in each function match the type hash field order and types.
