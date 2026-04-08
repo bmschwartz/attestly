@@ -10,6 +10,7 @@ import { surveyRouter } from "~/server/api/routers/survey";
 import { userRouter } from "~/server/api/routers/user";
 import { profileRouter } from "~/server/api/routers/profile";
 import { adminRouter } from "~/server/api/routers/admin";
+import { verificationRouter } from "~/server/api/routers/verification";
 
 /**
  * This is the primary router for your server.
@@ -28,6 +29,7 @@ export const appRouter = createTRPCRouter({
   user: userRouter,
   profile: profileRouter,
   admin: adminRouter,
+  verification: verificationRouter,
 });
 
 // export type definition of API
