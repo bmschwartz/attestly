@@ -4,6 +4,7 @@ import { useState } from "react";
 import { type RouterOutputs } from "~/trpc/react";
 import { DeleteDraftDialog } from "./delete-draft-dialog";
 import { CloseSurveyDialog } from "./close-survey-dialog";
+import { VerificationBadge } from "~/app/_components/verification-badge";
 
 type Survey = RouterOutputs["survey"]["listMine"]["surveys"][number];
 
@@ -97,6 +98,7 @@ function PublishedCard({ survey }: { survey: Survey }) {
             <div className="flex items-center gap-2">
               <h3 className="font-medium text-gray-900">{survey.title}</h3>
               <StatusBadge status="PUBLISHED" />
+              <VerificationBadge status={survey.verificationStatus} size="sm" />
               {survey.isPrivate && (
                 <span className="text-gray-400" title="Private survey">
                   🔒
@@ -152,6 +154,7 @@ function ClosedCard({ survey }: { survey: Survey }) {
           <div className="flex items-center gap-2">
             <h3 className="font-medium text-gray-900">{survey.title}</h3>
             <StatusBadge status="CLOSED" />
+              <VerificationBadge status={survey.verificationStatus} size="sm" />
           </div>
           <div className="mt-2 flex gap-4 text-sm text-gray-500">
             <span>{survey._count.responses} responses</span>

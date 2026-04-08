@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FREE_TIER_LIMITS } from "~/lib/premium";
 import type { SubscriptionPlan, SubscriptionStatus } from "../../../../generated/prisma";
 import { StartSurveyButton } from "./_components/start-survey-button";
+import { VerificationBadge } from "~/app/_components/verification-badge";
 
 export default async function SurveyLandingPage({
   params,
@@ -35,7 +36,18 @@ export default async function SurveyLandingPage({
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
-      <h1 className="text-3xl font-bold">{survey.title}</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-3xl font-bold">{survey.title}</h1>
+        <VerificationBadge status={survey.verificationStatus} size="md" />
+      </div>
+      {survey.verificationStatus !== "NONE" && (
+        <Link
+          href={`/s/${slug}/verify`}
+          className="mt-1 inline-block text-sm text-blue-600 hover:underline"
+        >
+          Verify attestation
+        </Link>
+      )}
       <p className="mt-2 text-sm text-gray-500">
         by{" "}
         {survey.creator.displayName ??
