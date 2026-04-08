@@ -1,13 +1,12 @@
 import { PinataSDK } from "pinata";
-import { env } from "~/env";
 
 // Lazy singleton – only created on first use so env vars are not required at import time.
 let client: PinataSDK | null = null;
 
 function getClient(): PinataSDK {
   if (!client) {
-    const jwt = env.PINATA_JWT;
-    const gateway = env.PINATA_GATEWAY_URL;
+    const jwt = process.env.PINATA_JWT;
+    const gateway = process.env.PINATA_GATEWAY_URL;
     if (!jwt || !gateway) {
       throw new Error(
         "PINATA_JWT and PINATA_GATEWAY_URL must be set to use IPFS features",

@@ -1,6 +1,5 @@
 import { type Chain, type Hex } from "viem";
 import { base, baseSepolia } from "viem/chains";
-import { env } from "~/env";
 import { getPublicClient, getWalletClient } from "./provider";
 import { attestlyAbi } from "./abi";
 
@@ -15,7 +14,7 @@ function getChain(): Chain {
  * Throws if ATTESTLY_CONTRACT_ADDRESS is not set.
  */
 function getContractAddress(): `0x${string}` {
-  const address = env.ATTESTLY_CONTRACT_ADDRESS;
+  const address = process.env.ATTESTLY_CONTRACT_ADDRESS;
   if (!address) {
     throw new Error(
       "ATTESTLY_CONTRACT_ADDRESS not configured. Deploy the contract and set the env var.",

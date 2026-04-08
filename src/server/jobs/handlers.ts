@@ -1,5 +1,9 @@
 import type { BackgroundJob } from "../../../generated/prisma";
 import { handleGenerateAiSummary } from "./handlers/generate-ai-summary";
+import { handlePublishSurvey } from "./handlers/publish-survey";
+import { handleSubmitResponse } from "./handlers/submit-response";
+import { handleCloseSurvey } from "./handlers/close-survey";
+import { handleVerifyResponses } from "./handlers/verify-responses";
 
 /**
  * A job handler function. Receives the full job record and performs
@@ -49,11 +53,11 @@ const placeholderHandler =
     console.log(`[JobHandler] Payload:`, job.payload);
   };
 
-// Register placeholder handlers for all job types
-registerHandler("PUBLISH_SURVEY", placeholderHandler("PUBLISH_SURVEY"));
-registerHandler("SUBMIT_RESPONSE", placeholderHandler("SUBMIT_RESPONSE"));
-registerHandler("CLOSE_SURVEY", placeholderHandler("CLOSE_SURVEY"));
-registerHandler("VERIFY_RESPONSES", placeholderHandler("VERIFY_RESPONSES"));
+// Register real handlers for blockchain job types
+registerHandler("PUBLISH_SURVEY", handlePublishSurvey);
+registerHandler("SUBMIT_RESPONSE", handleSubmitResponse);
+registerHandler("CLOSE_SURVEY", handleCloseSurvey);
+registerHandler("VERIFY_RESPONSES", handleVerifyResponses);
 registerHandler("SEND_EMAIL", placeholderHandler("SEND_EMAIL"));
 registerHandler("GENERATE_AI_SUMMARY", async (job) => {
   const payload = job.payload as {

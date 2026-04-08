@@ -138,7 +138,11 @@ model Survey {
   contentHash        String?
   ipfsCid            String?
   publishTxHash      String?
+  publishBlockNumber    String?
+  publishBlockTimestamp  DateTime?
   closeTxHash        String?
+  closeBlockNumber      String?
+  closeBlockTimestamp    DateTime?
   verificationStatus VerificationStatus @default(NONE)
   categories         Json               @default("[]")
   tags               Json               @default("[]")
@@ -155,7 +159,8 @@ model Survey {
   bounty         SurveyBounty?
   aiSummaries    AiSummary[]
   chatSessions   ChatSession[]
-  backgroundJobs BackgroundJob[] @relation("SurveyJobs")
+  backgroundJobs     BackgroundJob[]     @relation("SurveyJobs")
+  verificationResult VerificationResult?
 
   @@index([creatorId])
   @@index([status])
@@ -191,6 +196,8 @@ model Response {
   blindedId          String?
   ipfsCid            String?
   submitTxHash       String?
+  submitBlockNumber    String?
+  submitBlockTimestamp  DateTime?
   verificationStatus VerificationStatus @default(NONE)
   encryptionIv       String?
   payoutStatus       PayoutStatus       @default(NONE)
@@ -311,4 +318,18 @@ model SurveyBounty {
   updatedAt          DateTime @updatedAt
 
   survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+}
+
+model VerificationResult {
+  id                   String   @id @default(cuid())
+  surveyId             String   @unique
+  survey               Survey   @relation(fields: [surveyId], references: [id])
+  passed               Boolean
+  dbResponseCount      Int
+  onChainResponseCount Int
+  ipfsVerifiedCount    Int
+  errors               String[]
+  verifiedAt           DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }

@@ -235,6 +235,62 @@ export async function resetStaleJobs(): Promise<number> {
   return result.count;
 }
 
+/**
+ * Check if a job's dependencies are satisfied.
+ *
+ * - SUBMIT_RESPONSE: requires PUBLISH_SURVEY for the same survey to be COMPLETED
+ *   (throws a permanent error if PUBLISH_SURVEY FAILED -- no point retrying)
+ * - CLOSE_SURVEY: requires all SUBMIT_RESPONSE jobs for the same survey to be COMPLETED
+ * - All other job types: no dependencies
+ *
+ * @returns true if the job can be processed, false if it should wait
+ * @throws Error if a dependency permanently failed (caller should mark the job FAILED)
+ */
+export async function areDependenciesMet(
+  job: { type: string; surveyId: string | null },
+): Promise<boolean> {
+  if (job.type === "SUBMIT_RESPONSE" && job.surveyId) {
+    // Check for a FAILED PUBLISH_SURVEY -- no point retrying if publish permanently failed
+    const failedPublishJob = await db.backgroundJob.findFirst({
+      where: {
+        type: "PUBLISH_SURVEY",
+        surveyId: job.surveyId,
+        status: "FAILED",
+      },
+    });
+    if (failedPublishJob) {
+      throw new Error(
+        `PUBLISH_SURVEY job ${failedPublishJob.id} permanently failed for survey ${job.surveyId}. ` +
+          `Cannot submit response -- marking job as FAILED.`,
+      );
+    }
+
+    // Check if PUBLISH_SURVEY is still in progress
+    const pendingPublishJob = await db.backgroundJob.findFirst({
+      where: {
+        type: "PUBLISH_SURVEY",
+        surveyId: job.surveyId,
+        status: { in: ["PENDING", "PROCESSING"] },
+      },
+    });
+    if (pendingPublishJob) return false;
+  }
+
+  if (job.type === "CLOSE_SURVEY" && job.surveyId) {
+    // Check if all SUBMIT_RESPONSE jobs are completed for this survey
+    const pendingResponses = await db.backgroundJob.findFirst({
+      where: {
+        type: "SUBMIT_RESPONSE",
+        surveyId: job.surveyId,
+        status: { in: ["PENDING", "PROCESSING"] },
+      },
+    });
+    if (pendingResponses) return false;
+  }
+
+  return true;
+}
+
 export {
   DEFAULT_MAX_RETRIES,
   DEFAULT_BACKOFF_MS,

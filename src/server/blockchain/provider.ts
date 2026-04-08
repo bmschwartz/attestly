@@ -8,7 +8,6 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
-import { env } from "~/env";
 
 /**
  * Get the configured chain based on NEXT_PUBLIC_CHAIN_ID.
@@ -23,7 +22,7 @@ function getChain(): Chain {
  * Get the RPC URL. Falls back to Base mainnet public RPC if not configured.
  */
 function getRpcUrl(): string {
-  return env.BASE_RPC_URL ?? "https://mainnet.base.org";
+  return process.env.BASE_RPC_URL ?? "https://mainnet.base.org";
 }
 
 let _publicClient: PublicClient | null = null;
@@ -53,14 +52,14 @@ export function getPublicClient(): PublicClient {
 export function getWalletClient(): WalletClient {
   if (_walletClient) return _walletClient;
 
-  if (!env.RELAYER_PRIVATE_KEY) {
+  if (!process.env.RELAYER_PRIVATE_KEY) {
     throw new Error(
       "RELAYER_PRIVATE_KEY not configured. Cannot submit blockchain transactions.",
     );
   }
 
   const account = privateKeyToAccount(
-    env.RELAYER_PRIVATE_KEY as `0x${string}`,
+    process.env.RELAYER_PRIVATE_KEY as `0x${string}`,
   );
 
   _walletClient = createWalletClient({
@@ -77,11 +76,11 @@ export function getWalletClient(): WalletClient {
  * Throws if RELAYER_PRIVATE_KEY is not configured.
  */
 export function getRelayerAddress(): `0x${string}` {
-  if (!env.RELAYER_PRIVATE_KEY) {
+  if (!process.env.RELAYER_PRIVATE_KEY) {
     throw new Error("RELAYER_PRIVATE_KEY not configured.");
   }
   const account = privateKeyToAccount(
-    env.RELAYER_PRIVATE_KEY as `0x${string}`,
+    process.env.RELAYER_PRIVATE_KEY as `0x${string}`,
   );
   return account.address;
 }

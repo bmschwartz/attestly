@@ -6,7 +6,9 @@ import {
   resetStaleJobs,
   isReadyForRetry,
   getRetryDelay,
+  areDependenciesMet,
 } from "./queue";
+import { db } from "./db";
 import { getHandler } from "./handlers";
 import type { JobType } from "../../../generated/prisma";
 
@@ -58,6 +60,35 @@ export function startWorker(options: WorkerOptions = {}): {
         const delay = getRetryDelay(job.retryCount, job.type);
         await releaseJob(job.id, delay);
         return false;
+      }
+
+      // Check if job dependencies are met (e.g. SUBMIT_RESPONSE waits for PUBLISH_SURVEY)
+      let depsMet: boolean;
+      try {
+        depsMet = await areDependenciesMet(job);
+      } catch (err) {
+        // Dependency permanently failed — mark this job FAILED immediately
+        await db.backgroundJob.update({
+          where: { id: job.id },
+          data: {
+            status: "FAILED",
+            error: err instanceof Error ? err.message : String(err),
+          },
+        });
+        console.error(
+          `[Worker] Job ${job.id} (${job.type}) failed — dependency error:`,
+          err,
+        );
+        return true;
+      }
+
+      if (!depsMet) {
+        // Release back to PENDING with a short deferral — does NOT increment retryCount.
+        await releaseJob(job.id, 5_000);
+        console.log(
+          `[Worker] Job ${job.id} (${job.type}) deferred 5s — dependencies not yet met`,
+        );
+        return true;
       }
 
       const handler = getHandler(job.type);

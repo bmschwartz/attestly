@@ -1,12 +1,11 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { env } from "~/env";
 
 let summaryModel: ReturnType<
   InstanceType<typeof GoogleGenerativeAI>["getGenerativeModel"]
 > | null = null;
 
-if (env.GEMINI_API_KEY) {
-  const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
+if (process.env.GEMINI_API_KEY) {
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   summaryModel = genAI.getGenerativeModel({
     model: "gemini-2.0-flash-lite",
   });

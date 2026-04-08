@@ -1,4 +1,4 @@
-import { db } from "~/server/db";
+import { db } from "~/server/jobs/db";
 import { generateTopLevelSummary, generateFreeTextSummary } from "~/server/ai/summaries";
 import { isAiConfigured } from "~/server/ai/service";
 
