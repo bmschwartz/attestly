@@ -33,7 +33,7 @@
 Run the following command from the project root:
 
 ```bash
-npm install --save-dev hardhat @nomicfoundation/hardhat-toolbox @openzeppelin/contracts @openzeppelin/contracts-upgradeable dotenv
+pnpm add --save-dev hardhat @nomicfoundation/hardhat-toolbox @openzeppelin/contracts @openzeppelin/contracts-upgradeable
 ```
 
 These packages provide:
@@ -41,7 +41,8 @@ These packages provide:
 - `@nomicfoundation/hardhat-toolbox` — Bundled plugins (ethers, chai, coverage, gas reporter, etc.)
 - `@openzeppelin/contracts` — Standard contract library (ECDSA, EIP712, etc.)
 - `@openzeppelin/contracts-upgradeable` — Upgradeable variants for UUPS proxy pattern
-- `dotenv` — Environment variable loading for deployment keys
+
+Note: `dotenv` is already installed (`dotenv: ^17.4.0` in `package.json`). Do not reinstall it.
 
 ---
 
@@ -76,7 +77,7 @@ const config: HardhatUserConfig = {
         enabled: true,
         runs: 200,
       },
-      evmVersion: "paris",
+      evmVersion: "shanghai",
     },
   },
   networks: {
@@ -132,7 +133,7 @@ export default config;
 
 Key decisions:
 - `optimizer.runs: 200` — standard for contracts that are called often but deployed once
-- `evmVersion: "paris"` — compatible with Base L2
+- `evmVersion: "shanghai"` — Base L2 supports Shanghai (PUSH0 available); better gas efficiency than "paris"
 - `paths.sources` points to `contracts/` at project root
 - `paths.tests` points to `contracts/test/` for contract-specific tests
 - `cache_hardhat` avoids collision with any Next.js cache directory
@@ -232,16 +233,22 @@ interface IAttestly {
     // ──────────────────────────────────────────────
 
     /**
-     * @notice Publish a survey on-chain. Verifies EIP-712 signature matches the creator.
-     * @param surveyHash EIP-712 hash of the survey content
+     * @notice Publish a survey on-chain. Verifies EIP-712 signature over compact struct.
+     * @param surveyHash Deterministic content hash of the survey (chain-independent keccak256)
      * @param ipfsCid IPFS CID of the pinned survey JSON
-     * @param creator Address of the survey creator (recovered from signature)
-     * @param signature EIP-712 signature from the creator
+     * @param creator Address of the survey creator
+     * @param title Survey title (compact signing payload)
+     * @param slug Survey slug (compact signing payload)
+     * @param questionCount Number of questions (compact signing payload)
+     * @param signature EIP-712 signature from the creator over the compact PublishSurvey struct
      */
     function publishSurvey(
         bytes32 surveyHash,
         string calldata ipfsCid,
         address creator,
+        string calldata title,
+        string calldata slug,
+        uint8 questionCount,
         bytes calldata signature
     ) external;
 
@@ -251,12 +258,16 @@ interface IAttestly {
      * @param surveyHash The target survey
      * @param blindedId Expected blinded identifier (verified against computed value)
      * @param ipfsCid IPFS CID of the pinned response data
-     * @param signature EIP-712 signature from the respondent
+     * @param answerCount Number of answers (compact signing payload)
+     * @param answersHash Deterministic hash of full answer content (compact signing payload)
+     * @param signature EIP-712 signature from the respondent over the compact SubmitResponse struct
      */
     function submitResponse(
         bytes32 surveyHash,
         bytes32 blindedId,
         string calldata ipfsCid,
+        uint8 answerCount,
+        bytes32 answersHash,
         bytes calldata signature
     ) external;
 

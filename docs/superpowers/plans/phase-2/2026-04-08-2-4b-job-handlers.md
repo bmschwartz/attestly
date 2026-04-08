@@ -35,7 +35,7 @@ This handler replaces the placeholder and implements the full publish flow:
 
 ```typescript
 import type { BackgroundJob } from "../../../../generated/prisma";
-import { db } from "~/server/db";
+import { db } from "~/server/jobs/db"; // Use worker-safe Prisma client (no server-only import)
 import { hashSurvey } from "~/lib/eip712/hash";
 import type { SurveyMessage, SurveyQuestion } from "~/lib/eip712/types";
 import { pinSurvey } from "~/lib/ipfs/pin-survey";
@@ -73,7 +73,7 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
     include: {
       questions: {
         orderBy: { position: "asc" },
-        include: { options: { orderBy: { position: "asc" } } },
+        // Note: Question.options is a Json field (string[]), not a relation -- no include needed
       },
       creator: { select: { walletAddress: true } },
     },
@@ -86,10 +86,10 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
   // 2. Build EIP-712 message
   const questions: SurveyQuestion[] = survey.questions.map((q) => ({
     text: q.text,
-    questionType: q.type,
+    questionType: q.questionType, // Prisma field is `questionType`, not `type`
     position: q.position,
     required: q.required,
-    options: q.options.map((o) => o.text),
+    options: q.options as string[], // options is Json @default("[]"), cast to string[]
     minRating: q.minRating ?? 0,
     maxRating: q.maxRating ?? 0,
     maxLength: q.maxLength ?? 0,
@@ -132,25 +132,43 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
     surveyHash,
   );
 
-  // 4-5. Submit tx and wait for confirmation
-  const { txHash } = await relayAndConfirm(
+  const creator = survey.creator.walletAddress as `0x${string}`;
+  const title = survey.title;
+  const slug = survey.slug;
+  const questionCount = survey.questions.length;
+
+  // 4-5. Submit tx and wait for confirmation (includes gas ceiling check)
+  const { txHash, receipt } = await relayAndConfirm(
+    () =>
+      getPublicClient().estimateContractGas({
+        address: env.ATTESTLY_CONTRACT_ADDRESS as `0x${string}`,
+        abi: attestlyAbi,
+        functionName: "publishSurvey",
+        args: [surveyHash as Hex, ipfsCid, creator, title, slug, questionCount, signature as Hex],
+      }),
     () =>
       publishSurveyOnChain(
         surveyHash as Hex,
         ipfsCid,
-        survey.creator.walletAddress as `0x${string}`,
+        creator,
+        title,
+        slug,
+        questionCount,
         signature as Hex,
       ),
+    "publishSurvey",
     `publishSurvey for survey ${surveyId} (hash: ${surveyHash.slice(0, 10)}...)`,
   );
 
-  // 6. Update Survey record
+  // 6. Update Survey record with tx hash and block metadata
   await db.survey.update({
     where: { id: surveyId },
     data: {
       contentHash: surveyHash,
       ipfsCid,
       publishTxHash: txHash,
+      publishBlockNumber: receipt.blockNumber.toString(),
+      publishBlockTimestamp: new Date(Number(receipt.timestamp) * 1000),
       verificationStatus: "VERIFIED",
     },
   });
@@ -206,10 +224,15 @@ This handler implements the full response submission flow:
 
 ```typescript
 import type { BackgroundJob } from "../../../../generated/prisma";
-import { db } from "~/server/db";
+import { db } from "~/server/jobs/db"; // Use worker-safe Prisma client (no server-only import)
 import { computeBlindedId } from "~/lib/eip712/blinded-id";
+import { hashAnswers } from "~/lib/eip712/hash";
+import type { ResponseAnswer } from "~/lib/eip712/types";
 import { pinResponse } from "~/lib/ipfs/pin-response";
 import { submitResponseOnChain } from "~/server/blockchain/contract";
+import { getPublicClient } from "~/server/blockchain/provider";
+import { attestlyAbi } from "~/server/blockchain/abi";
+import { env } from "~/env";
 import { relayAndConfirm } from "~/server/blockchain/relayer";
 import type { Hex } from "viem";
 
@@ -245,7 +268,7 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
       answers: {
         orderBy: { questionId: "asc" },
         include: {
-          question: { select: { position: true, type: true } },
+          question: { select: { position: true, questionType: true } },
         },
       },
       survey: {
@@ -291,7 +314,7 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
   // 4. Pin response JSON to IPFS
   const answers = response.answers.map((a) => ({
     questionIndex: a.question.position,
-    questionType: a.question.type,
+    questionType: a.question.questionType, // Prisma field is `questionType`, not `type`
     value: a.value,
   }));
 
@@ -302,25 +325,46 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
     signature,
   });
 
-  // 5-6. Submit tx and wait for confirmation
-  const { txHash } = await relayAndConfirm(
+  // Compute answersHash for the contract (chain-independent, two-layer hash)
+  const eip712Answers: ResponseAnswer[] = response.answers.map((a) => ({
+    questionIndex: a.question.position,
+    questionType: a.question.questionType,
+    value: a.value,
+  }));
+  const answersHash = hashAnswers(eip712Answers);
+  const answerCount = response.answers.length;
+
+  // 5-6. Submit tx and wait for confirmation (includes gas ceiling check)
+  const { txHash, receipt } = await relayAndConfirm(
+    () =>
+      getPublicClient().estimateContractGas({
+        address: env.ATTESTLY_CONTRACT_ADDRESS as `0x${string}`,
+        abi: attestlyAbi,
+        functionName: "submitResponse",
+        args: [surveyHash as Hex, blindedId as Hex, ipfsCid, answerCount, answersHash, signature as Hex],
+      }),
     () =>
       submitResponseOnChain(
         surveyHash as Hex,
         blindedId as Hex,
         ipfsCid,
+        answerCount,
+        answersHash,
         signature as Hex,
       ),
+    "submitResponse",
     `submitResponse for response ${responseId} (survey: ${surveyHash.slice(0, 10)}...)`,
   );
 
-  // 7. Update Response record
+  // 7. Update Response record with tx hash and block metadata
   await db.response.update({
     where: { id: responseId },
     data: {
       blindedId,
       ipfsCid,
       submitTxHash: txHash,
+      submitBlockNumber: receipt.blockNumber.toString(),
+      submitBlockTimestamp: new Date(Number(receipt.timestamp) * 1000),
       verificationStatus: "VERIFIED",
     },
   });
@@ -333,8 +377,11 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
 
 Key notes:
 - If `contentHash` is null, the survey hasn't been published on-chain yet. The job throws an error and retries (the PUBLISH_SURVEY job should complete before retries are exhausted, thanks to job ordering -- see Task 9).
-- Answer mapping: `questionIndex` uses the question's `position` field, `questionType` uses the question's `type` field, and `value` is the stored answer value.
+- Answer mapping: `questionIndex` uses the question's `position` field, `questionType` uses the question's `questionType` field (not `type`), and `value` is the stored answer value.
 - The blinded ID is computed server-side (same computation as on-chain) and stored in both the Response record and the IPFS JSON.
+- `answersHash` is computed via `hashAnswers` (chain-independent `keccak256(encodeAbiParameters(...))`) and passed to the contract. This matches the `SUBMIT_RESPONSE_TYPEHASH` struct which signs `{surveyHash, blindedId, answerCount, answersHash}`.
+- `submitBlockTimestamp` uses `receipt.timestamp` (seconds since epoch), not `receipt.blockNumber`. Block number is meaningless as a timestamp.
+- `submitBlockNumber` is stored as a string to handle BigInt serialization safely.
 
 - [ ] **Step 2: Verify TypeScript compiles**
 
@@ -364,8 +411,11 @@ Create `src/server/jobs/handlers/close-survey.ts`:
 
 ```typescript
 import type { BackgroundJob } from "../../../../generated/prisma";
-import { db } from "~/server/db";
+import { db } from "~/server/jobs/db"; // Use worker-safe Prisma client (no server-only import)
 import { closeSurveyOnChain } from "~/server/blockchain/contract";
+import { getPublicClient } from "~/server/blockchain/provider";
+import { attestlyAbi } from "~/server/blockchain/abi";
+import { env } from "~/env";
 import { relayAndConfirm } from "~/server/blockchain/relayer";
 import { createJob } from "~/server/jobs/queue";
 import type { Hex } from "viem";
@@ -406,17 +456,27 @@ export async function handleCloseSurvey(job: BackgroundJob): Promise<void> {
 
   const surveyHash = survey.contentHash;
 
-  // 2-3. Submit tx and wait for confirmation
-  const { txHash } = await relayAndConfirm(
+  // 2-3. Submit tx and wait for confirmation (includes gas ceiling check)
+  const { txHash, receipt } = await relayAndConfirm(
+    () =>
+      getPublicClient().estimateContractGas({
+        address: env.ATTESTLY_CONTRACT_ADDRESS as `0x${string}`,
+        abi: attestlyAbi,
+        functionName: "closeSurvey",
+        args: [surveyHash as Hex, signature as Hex],
+      }),
     () => closeSurveyOnChain(surveyHash as Hex, signature as Hex),
+    "closeSurvey",
     `closeSurvey for survey ${surveyId} (hash: ${surveyHash.slice(0, 10)}...)`,
   );
 
-  // 4. Update Survey record
+  // 4. Update Survey record with tx hash and block metadata
   await db.survey.update({
     where: { id: surveyId },
     data: {
       closeTxHash: txHash,
+      closeBlockNumber: receipt.blockNumber.toString(),
+      closeBlockTimestamp: new Date(Number(receipt.timestamp) * 1000),
     },
   });
 
@@ -446,7 +506,7 @@ The result is cached in the database for display on the verification page.
 
 ```typescript
 import type { BackgroundJob } from "../../../../generated/prisma";
-import { db } from "~/server/db";
+import { db } from "~/server/jobs/db"; // Use worker-safe Prisma client (no server-only import)
 import { getResponseCountOnChain } from "~/server/blockchain/contract";
 import { getContent } from "~/lib/ipfs/pinata";
 import type { Hex } from "viem";
@@ -543,11 +603,29 @@ export async function handleVerifyResponses(job: BackgroundJob): Promise<void> {
     );
   }
 
-  // 6. Cache the result
-  // Store as a JSON field on the survey or a separate verification record.
-  // For now, log the result. The verification caching schema will be
-  // refined when the verification page is implemented.
+  // 6. Store the result in the VerificationResult table
   const passed = errors.length === 0;
+
+  await db.verificationResult.upsert({
+    where: { surveyId },
+    create: {
+      surveyId,
+      passed,
+      dbResponseCount: dbCount,
+      onChainResponseCount: Number(onChainCount),
+      ipfsVerifiedCount: ipfsVerified,
+      errors,
+      verifiedAt: new Date(),
+    },
+    update: {
+      passed,
+      dbResponseCount: dbCount,
+      onChainResponseCount: Number(onChainCount),
+      ipfsVerifiedCount: ipfsVerified,
+      errors,
+      verifiedAt: new Date(),
+    },
+  });
 
   console.log(
     `[VerifyResponses] Survey ${surveyId}: ${passed ? "PASSED" : "FAILED"}`,
@@ -558,17 +636,14 @@ export async function handleVerifyResponses(job: BackgroundJob): Promise<void> {
   if (errors.length > 0) {
     console.log(`[VerifyResponses] Errors:`, errors);
   }
-
-  // TODO: Store verification result in a dedicated DB field or table
-  // when the verification page plan is implemented. For now, the
-  // console output serves as the verification record.
 }
 ```
 
 Key notes:
 - IPFS verification is sequential to avoid overwhelming the gateway. For large surveys, this could be parallelized with concurrency limits (future optimization).
-- The verification result caching is a TODO -- the exact schema depends on the verification page implementation (a future sub-plan). The handler logs results for now.
-- `getResponseCountOnChain` returns a `bigint` (standard for EVM uint256 values).
+- The `VerificationResult` model must be added to the Prisma schema as part of the schema migration for Phase 2. Required fields: `id`, `surveyId` (unique FK), `passed`, `dbResponseCount`, `onChainResponseCount`, `ipfsVerifiedCount`, `errors` (String[]), `verifiedAt`. See the schema migration note in Task 9.
+- `getResponseCountOnChain` returns a `bigint` (standard for EVM uint256 values). It is cast to `Number` for DB storage (safe up to 2^53 responses).
+- The result uses `upsert` so re-running VERIFY_RESPONSES (e.g., after a manual re-check) overwrites the previous result rather than inserting a duplicate.
 
 - [ ] **Step 3: Verify TypeScript compiles**
 
@@ -625,6 +700,35 @@ registerHandler("GENERATE_AI_SUMMARY", async (job) => {
 });
 ```
 
+- [ ] **Step 1b: Add schema migration for new fields**
+
+The following fields must be added to the Prisma schema before running:
+- `Survey`: `publishBlockNumber String?`, `publishBlockTimestamp DateTime?`, `closeBlockNumber String?`, `closeBlockTimestamp DateTime?`
+- `Response`: `submitBlockNumber String?`, `submitBlockTimestamp DateTime?`
+- New model `VerificationResult`:
+  ```prisma
+  model VerificationResult {
+    id                  String   @id @default(cuid())
+    surveyId            String   @unique
+    survey              Survey   @relation(fields: [surveyId], references: [id])
+    passed              Boolean
+    dbResponseCount     Int
+    onChainResponseCount Int
+    ipfsVerifiedCount   Int
+    errors              String[]
+    verifiedAt          DateTime
+    createdAt           DateTime @default(now())
+    updatedAt           DateTime @updatedAt
+  }
+  ```
+
+Also add `verificationResult VerificationResult?` to the `Survey` model relation.
+
+After updating `schema.prisma`, run:
+```bash
+pnpm prisma migrate dev --name phase2_blockchain_fields
+```
+
 - [ ] **Step 2: Implement job ordering in the worker**
 
 The spec requires:
@@ -640,23 +744,40 @@ Add a new function to `src/server/jobs/queue.ts`:
  * Check if a job's dependencies are satisfied.
  *
  * - SUBMIT_RESPONSE: requires PUBLISH_SURVEY for the same survey to be COMPLETED
+ *   (throws a permanent error if PUBLISH_SURVEY FAILED — no point retrying)
  * - CLOSE_SURVEY: requires all SUBMIT_RESPONSE jobs for the same survey to be COMPLETED
  * - All other job types: no dependencies
  *
- * @returns true if the job can be processed, false if it should be skipped
+ * @returns true if the job can be processed, false if it should wait
+ * @throws Error if a dependency permanently failed (caller should mark the job FAILED)
  */
 export async function areDependenciesMet(job: BackgroundJob): Promise<boolean> {
   if (job.type === "SUBMIT_RESPONSE" && job.surveyId) {
-    // Check if PUBLISH_SURVEY is completed for this survey
-    const publishJob = await db.backgroundJob.findFirst({
+    // Check for a FAILED PUBLISH_SURVEY — no point retrying if publish permanently failed
+    const failedPublishJob = await db.backgroundJob.findFirst({
+      where: {
+        type: "PUBLISH_SURVEY",
+        surveyId: job.surveyId,
+        status: "FAILED",
+      },
+    });
+    if (failedPublishJob) {
+      throw new Error(
+        `PUBLISH_SURVEY job ${failedPublishJob.id} permanently failed for survey ${job.surveyId}. ` +
+          `Cannot submit response — marking job as FAILED.`,
+      );
+    }
+
+    // Check if PUBLISH_SURVEY is still in progress
+    const pendingPublishJob = await db.backgroundJob.findFirst({
       where: {
         type: "PUBLISH_SURVEY",
         surveyId: job.surveyId,
         status: { in: ["PENDING", "PROCESSING"] },
       },
     });
-    // If a PUBLISH_SURVEY job is still pending/processing, skip this job
-    if (publishJob) return false;
+    // If a PUBLISH_SURVEY job is still pending/processing, wait
+    if (pendingPublishJob) return false;
   }
 
   if (job.type === "CLOSE_SURVEY" && job.surveyId) {
@@ -675,25 +796,45 @@ export async function areDependenciesMet(job: BackgroundJob): Promise<boolean> {
 }
 ```
 
-Then update the worker's `processNextJob` function in `src/server/jobs/worker.ts` to call `areDependenciesMet` after claiming a job. If dependencies are not met, release the job back to PENDING:
+Then update the worker's `processNextJob` function in `src/server/jobs/worker.ts` to call `areDependenciesMet` after claiming a job. If dependencies are not met, release the job back to PENDING with a deferred `nextAttemptAt` to avoid busy-looping:
 
 ```typescript
 // After claiming the job, check dependencies
-const depsMet = await areDependenciesMet(job);
-if (!depsMet) {
-  // Release the job -- set it back to PENDING without incrementing retry count
+let depsMet: boolean;
+try {
+  depsMet = await areDependenciesMet(job);
+} catch (err) {
+  // Dependency permanently failed — mark this job FAILED immediately
   await db.backgroundJob.update({
     where: { id: job.id },
-    data: { status: "PENDING" },
+    data: {
+      status: "FAILED",
+      lastError: err instanceof Error ? err.message : String(err),
+    },
+  });
+  console.error(`[Worker] Job ${job.id} (${job.type}) failed — dependency error:`, err);
+  return true;
+}
+
+if (!depsMet) {
+  // Release the job back to PENDING with a short delay to avoid busy-looping
+  await db.backgroundJob.update({
+    where: { id: job.id },
+    data: {
+      status: "PENDING",
+      nextAttemptAt: new Date(Date.now() + 5_000), // retry after 5s
+    },
   });
   console.log(
-    `[Worker] Job ${job.id} (${job.type}) skipped — dependencies not met`,
+    `[Worker] Job ${job.id} (${job.type}) deferred 5s — dependencies not yet met`,
   );
   return true; // return true to continue processing other jobs
 }
 ```
 
-Import `areDependenciesMet` from `./queue` and `db` from `~/server/db` in the worker module.
+Import `areDependenciesMet` from `./queue` and `db` from `~/server/jobs/db` in the worker module.
+
+**Important:** The existing worker code must NOT call `failJob` when backoff is not elapsed — `failJob` increments the retry counter, which would burn retry budget on dependency-blocked jobs. The `nextAttemptAt` path above must use a dedicated `releaseJob` path that only updates `status` and `nextAttemptAt` without touching `retryCount`. Verify the worker's backoff path handles this correctly before adding dependency-skip logic on top.
 
 - [ ] **Step 3: Verify TypeScript compiles**
 
@@ -754,9 +895,11 @@ After completing all tasks, verify:
 - [ ] `src/server/jobs/handlers/publish-survey.ts` -- full flow: load survey -> hash -> pin IPFS -> submit tx -> update DB
 - [ ] `src/server/jobs/handlers/submit-response.ts` -- full flow: load response -> compute blinded ID -> pin IPFS -> submit tx -> update DB
 - [ ] `src/server/jobs/handlers/close-survey.ts` -- submit closeSurvey tx -> update DB -> queue VERIFY_RESPONSES
-- [ ] `src/server/jobs/handlers/verify-responses.ts` -- check IPFS CIDs, blinded ID uniqueness, count match
+- [ ] `src/server/jobs/handlers/verify-responses.ts` -- check IPFS CIDs, blinded ID uniqueness, count match; stores result in VerificationResult
 - [ ] `src/server/jobs/handlers.ts` -- real handlers registered (no more placeholders for blockchain job types)
-- [ ] `src/server/jobs/queue.ts` -- has `areDependenciesMet` function for job ordering
-- [ ] `src/server/jobs/worker.ts` -- checks dependencies before processing jobs
-- [ ] SUBMIT_RESPONSE jobs wait for PUBLISH_SURVEY to complete for the same survey
+- [ ] `src/server/jobs/queue.ts` -- has `areDependenciesMet` function for job ordering; throws on FAILED dependency; returns false (not throws) when dependency still pending
+- [ ] `src/server/jobs/worker.ts` -- checks dependencies before processing; defers with 5s `nextAttemptAt` to avoid busy-loop; marks FAILED if dependency permanently failed
+- [ ] SUBMIT_RESPONSE jobs wait for PUBLISH_SURVEY to complete for the same survey; immediately fail if PUBLISH_SURVEY failed
 - [ ] CLOSE_SURVEY jobs wait for all SUBMIT_RESPONSE jobs to complete for the same survey
+- [ ] Prisma schema updated with `publishBlockNumber`, `publishBlockTimestamp`, `closeBlockNumber`, `closeBlockTimestamp` on Survey; `submitBlockNumber`, `submitBlockTimestamp` on Response; new `VerificationResult` model
+- [ ] `pnpm prisma migrate dev` succeeds with the new schema fields

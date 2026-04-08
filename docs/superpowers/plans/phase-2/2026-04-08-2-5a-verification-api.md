@@ -6,7 +6,7 @@
 
 **Architecture:** A `verificationRouter` in `src/server/api/routers/verification.ts` exposes three query procedures for fetching verification status, survey proofs, and response proofs. The API returns stored proof data (tx hashes, block numbers, IPFS CIDs) from the database and constructs Basescan links. Live hash recomputation and full integrity checks are deferred to the pre-launch phase (Sub-Plan 2-6) along with open-source verification tools.
 
-**Tech Stack:** tRPC v11, Zod v4, Prisma 7, ethers.js, Base (L2)
+**Tech Stack:** tRPC v11, Zod v4, Prisma 7, viem, Base (L2)
 
 **Spec reference:** `docs/superpowers/specs/2026-04-05-blockchain-verification-design.md`
 
@@ -27,16 +27,43 @@
 **Files:**
 - Modify: `prisma/schema.prisma`
 
-- [ ] **Step 1: Add a `VerificationResult` model** (or fields on Survey) to store the cached result of check 4 (Response Integrity). Include fields:
-  - `id` — primary key
-  - `surveyId` — foreign key to Survey
-  - `check` — enum or string identifying the check type (e.g., `RESPONSE_INTEGRITY`)
-  - `status` — enum: `PASS`, `FAIL`, `PENDING`
-  - `details` — JSON field for structured result data (response count verified, mismatches found, etc.)
-  - `verifiedAt` — timestamp of when the check was last run
-  - `createdAt`, `updatedAt`
-- [ ] **Step 2: Run `npx prisma generate`** to update the Prisma client
-- [ ] **Step 3: Create and apply a migration** with `npx prisma migrate dev --name add-verification-result`
+- [ ] **Step 1: Add the following to `prisma/schema.prisma`**
+
+  New fields on `Survey`:
+  ```prisma
+  publishBlockNumber    String?
+  publishBlockTimestamp DateTime?
+  closeBlockNumber      String?
+  closeBlockTimestamp   DateTime?
+  ```
+
+  New fields on `Response`:
+  ```prisma
+  submitBlockNumber    String?
+  submitBlockTimestamp DateTime?
+  ```
+
+  New `VerificationResult` model (stores cached check-4 results written by the VERIFY_RESPONSES job handler):
+  ```prisma
+  model VerificationResult {
+    id                   String   @id @default(cuid())
+    surveyId             String   @unique
+    survey               Survey   @relation(fields: [surveyId], references: [id])
+    passed               Boolean
+    dbResponseCount      Int
+    onChainResponseCount Int
+    ipfsVerifiedCount    Int
+    errors               String[]
+    verifiedAt           DateTime
+    createdAt            DateTime @default(now())
+    updatedAt            DateTime @updatedAt
+  }
+  ```
+
+  Also add `verificationResult VerificationResult?` to the `Survey` model relation.
+
+- [ ] **Step 2: Run `pnpm prisma generate`** to update the Prisma client
+- [ ] **Step 3: Create and apply a migration** with `pnpm prisma migrate dev --name phase2_blockchain_fields`
 
 ---
 
@@ -50,20 +77,22 @@
 **Note:** This phase does NOT implement live hash recomputation or live on-chain reads for verification checks. Instead, it returns stored proof data from the database. Full verification checks (live hash recomputation, contract reads) are deferred to the pre-launch phase (Sub-Plan 2-6) along with the open-source verification tools.
 
 - [ ] **Step 2: Implement `getSurveyProofData(surveyId)`**
-  - Load survey record with `contentHash`, `ipfsCid`, `publishTxHash`, `closeTxHash`, `verificationStatus`
-  - Load associated background job records for block numbers and timestamps
-  - Construct Basescan links from tx hashes
-  - Return `{ surveyHash, ipfsCid, publishTxHash, closeTxHash, blockNumbers, basescanLinks, verificationStatus }`
+  - Load survey record with `contentHash`, `ipfsCid`, `publishTxHash`, `closeTxHash`, `publishBlockNumber`, `publishBlockTimestamp`, `closeBlockNumber`, `closeBlockTimestamp`, `verificationStatus`
+  - Block numbers and timestamps are stored directly on Survey (populated by job handlers) — no need to load background job records
+  - Construct chain-aware Basescan links from tx hashes using `env.NEXT_PUBLIC_CHAIN_ID`:
+    - Base mainnet (chainId 8453): `https://basescan.org/tx/{txHash}`
+    - Base Sepolia (chainId 84532): `https://sepolia.basescan.org/tx/{txHash}`
+  - Return `{ surveyHash, ipfsCid, publishTxHash, closeTxHash, publishBlockNumber, publishBlockTimestamp, closeBlockNumber, closeBlockTimestamp, basescanLinks, verificationStatus }`
 - [ ] **Step 3: Implement `getResponseProofData(responseId)`**
-  - Load response record with `blindedId`, `ipfsCid`, `submitTxHash`, `verificationStatus`
-  - Construct Basescan link from tx hash
-  - Return `{ blindedId, ipfsCid, submitTxHash, blockNumber, basescanLink, verificationStatus }`
+  - Load response record with `blindedId`, `ipfsCid`, `submitTxHash`, `submitBlockNumber`, `submitBlockTimestamp`, `verificationStatus`
+  - Construct chain-aware Basescan link from tx hash (same logic as above)
+  - Return `{ blindedId, ipfsCid, submitTxHash, submitBlockNumber, submitBlockTimestamp, basescanLink, verificationStatus }`
 - [ ] **Step 4: Implement `getResponseCountSummary(surveyId)`**
   - Count verified responses from database
   - Return `{ platformCount, verifiedCount }` (no live on-chain comparison in this phase)
 - [ ] **Step 5: Implement `getCachedResponseIntegrity(surveyId)`**
-  - Read the cached `VerificationResult` from the database for check 4
-  - Return the stored result with `verifiedAt` timestamp
+  - Read the cached `VerificationResult` from the database (written by the VERIFY_RESPONSES job handler)
+  - Return `{ passed, dbResponseCount, onChainResponseCount, ipfsVerifiedCount, errors, verifiedAt }`
   - If no cached result exists, return `{ status: 'pending', message: 'Verification not yet run' }`
 
 ---
@@ -87,7 +116,7 @@
     - `SurveyPublished` event
     - `SurveyClosed` event (if closed)
     - Response count summary
-  - Construct Basescan links: `https://basescan.org/tx/{txHash}`
+  - Construct chain-aware Basescan links using `env.NEXT_PUBLIC_CHAIN_ID` (8453 → `basescan.org`, 84532 → `sepolia.basescan.org`)
 - [ ] **Step 4: Implement `verification.getResponseProof`** — protected query
   - Input: `{ slug: string }` (Zod validated)
   - Auth: must be the respondent (use `ctx.userId` to find their response)
@@ -113,6 +142,6 @@
 
 ### Task 5: Typecheck
 
-- [ ] **Step 1: Run `npx tsc --noEmit`** and fix any type errors
+- [ ] **Step 1: Run `pnpm typecheck`** and fix any type errors
 - [ ] **Step 2: Verify the Prisma client types** include the new VerificationResult model
 - [ ] **Step 3: Ensure all tRPC procedure return types** are correctly inferred

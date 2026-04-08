@@ -6,7 +6,7 @@
 
 **Architecture:** The verification page at `/s/[slug]/verify` fetches stored proof data from the `verification` tRPC router (2-5a) and displays it. The page shows verification status, transaction hashes with Basescan links, block numbers, and IPFS CIDs. Live hash recomputation and independent verification checks are deferred to the pre-launch phase (Sub-Plan 2-6). A reusable `VerificationBadge` component is used on survey cards and the survey landing page.
 
-**Tech Stack:** Next.js 15 (App Router), React 19, TailwindCSS, tRPC v11
+**Tech Stack:** Next.js 16 (App Router), React 19, TailwindCSS, tRPC v11
 
 **Spec reference:** `docs/superpowers/specs/2026-04-05-blockchain-verification-design.md`
 
@@ -134,6 +134,6 @@
 
 ### Task 6: Typecheck
 
-- [ ] **Step 1: Run `npx tsc --noEmit`** and fix any type errors
+- [ ] **Step 1: Run `pnpm typecheck`** and fix any type errors
 - [ ] **Step 2: Verify all new components** accept the correct prop types from the tRPC router return types
 - [ ] **Step 3: Check that the verification page renders** without runtime errors (run `next build` or dev server)

@@ -64,9 +64,12 @@ export function getEIP712Domain(contractAddress: string, chainId: number) {
 }
 
 /**
- * Sign a PublishSurvey EIP-712 message.
+ * Sign a PublishSurvey EIP-712 message (compact struct).
  *
- * Struct: PublishSurvey(bytes32 surveyHash, string ipfsCid, address creator)
+ * Struct: PublishSurvey(bytes32 surveyHash, string title, string slug, uint8 questionCount, address creator)
+ *
+ * The user signs this compact summary, not the full survey data.
+ * surveyHash is a precomputed content hash (chain-independent keccak256).
  */
 export async function signPublishSurvey(
   signer: HardhatEthersSigner,
@@ -74,7 +77,9 @@ export async function signPublishSurvey(
   chainId: number,
   params: {
     surveyHash: string;
-    ipfsCid: string;
+    title: string;
+    slug: string;
+    questionCount: number;
     creator: string;
   }
 ): Promise<string> {
@@ -82,23 +87,29 @@ export async function signPublishSurvey(
   const types = {
     PublishSurvey: [
       { name: "surveyHash", type: "bytes32" },
-      { name: "ipfsCid", type: "string" },
+      { name: "title", type: "string" },
+      { name: "slug", type: "string" },
+      { name: "questionCount", type: "uint8" },
       { name: "creator", type: "address" },
     ],
   };
   const value = {
     surveyHash: params.surveyHash,
-    ipfsCid: params.ipfsCid,
+    title: params.title,
+    slug: params.slug,
+    questionCount: params.questionCount,
     creator: params.creator,
   };
   return signer.signTypedData(domain, types, value);
 }
 
 /**
- * Sign a SubmitResponse EIP-712 message.
+ * Sign a SubmitResponse EIP-712 message (compact struct).
  *
- * Struct: SubmitResponse(bytes32 surveyHash, string ipfsCid)
- * Note: the signer's address is NOT in the struct — it's recovered on-chain.
+ * Struct: SubmitResponse(bytes32 surveyHash, bytes32 blindedId, uint8 answerCount, bytes32 answersHash)
+ *
+ * Note: signer address is NOT in the struct — it's recovered on-chain.
+ * answersHash is a chain-independent keccak256 of the serialized answers.
  */
 export async function signSubmitResponse(
   signer: HardhatEthersSigner,
@@ -106,19 +117,25 @@ export async function signSubmitResponse(
   chainId: number,
   params: {
     surveyHash: string;
-    ipfsCid: string;
+    blindedId: string;
+    answerCount: number;
+    answersHash: string;
   }
 ): Promise<string> {
   const domain = getEIP712Domain(contractAddress, chainId);
   const types = {
     SubmitResponse: [
       { name: "surveyHash", type: "bytes32" },
-      { name: "ipfsCid", type: "string" },
+      { name: "blindedId", type: "bytes32" },
+      { name: "answerCount", type: "uint8" },
+      { name: "answersHash", type: "bytes32" },
     ],
   };
   const value = {
     surveyHash: params.surveyHash,
-    ipfsCid: params.ipfsCid,
+    blindedId: params.blindedId,
+    answerCount: params.answerCount,
+    answersHash: params.answersHash,
   };
   return signer.signTypedData(domain, types, value);
 }
@@ -219,14 +236,19 @@ export async function deployWithPublishedSurvey() {
 
   const surveyHash = ethers.keccak256(ethers.toUtf8Bytes("test-survey-content"));
   const ipfsCid = "QmTestSurveyHash123456789012345678901234567890";
+  const title = "Test Survey";
+  const slug = "test-survey";
+  const questionCount = 3;
 
   const signature = await signPublishSurvey(creator, contractAddress, chainId, {
     surveyHash,
-    ipfsCid,
+    title,
+    slug,
+    questionCount,
     creator: creator.address,
   });
 
-  await attestly.publishSurvey(surveyHash, ipfsCid, creator.address, signature);
+  await attestly.publishSurvey(surveyHash, ipfsCid, creator.address, title, slug, questionCount, signature);
 
   return {
     ...fixture,
@@ -245,6 +267,8 @@ export async function deployWithOneResponse() {
 
   const responseIpfsCid = "QmTestResponseHash12345678901234567890123456789";
   const blindedId = computeBlindedId(respondent1.address, surveyHash);
+  const answerCount = 3;
+  const answersHash = ethers.keccak256(ethers.toUtf8Bytes("test-answers-content"));
 
   const signature = await signSubmitResponse(
     respondent1,
@@ -252,11 +276,13 @@ export async function deployWithOneResponse() {
     chainId,
     {
       surveyHash,
-      ipfsCid: responseIpfsCid,
+      blindedId,
+      answerCount,
+      answersHash,
     }
   );
 
-  await attestly.submitResponse(surveyHash, blindedId, responseIpfsCid, signature);
+  await attestly.submitResponse(surveyHash, blindedId, responseIpfsCid, answerCount, answersHash, signature);
 
   return {
     ...fixture,
@@ -305,6 +331,9 @@ describe("Attestly", function () {
         ethers.toUtf8Bytes("test-survey-content")
       );
       const ipfsCid = "QmTestSurveyHash123456789012345678901234567890";
+      const title = "Test Survey";
+      const slug = "test-survey";
+      const questionCount = 3;
 
       const signature = await signPublishSurvey(
         creator,
@@ -312,13 +341,15 @@ describe("Attestly", function () {
         chainId,
         {
           surveyHash,
-          ipfsCid,
+          title,
+          slug,
+          questionCount,
           creator: creator.address,
         }
       );
 
       await expect(
-        attestly.publishSurvey(surveyHash, ipfsCid, creator.address, signature)
+        attestly.publishSurvey(surveyHash, ipfsCid, creator.address, title, slug, questionCount, signature)
       )
         .to.emit(attestly, "SurveyPublished")
         .withArgs(surveyHash, ipfsCid, (ts: bigint) => ts > 0n);
@@ -342,7 +373,9 @@ describe("Attestly", function () {
         chainId,
         {
           surveyHash,
-          ipfsCid: "QmDifferentCid00000000000000000000000000000000",
+          title: "Test Survey",
+          slug: "test-survey",
+          questionCount: 3,
           creator: creator.address,
         }
       );
@@ -352,6 +385,9 @@ describe("Attestly", function () {
           surveyHash,
           "QmDifferentCid00000000000000000000000000000000",
           creator.address,
+          "Test Survey",
+          "test-survey",
+          3,
           signature
         )
       ).to.be.revertedWithCustomError(attestly, "SurveyAlreadyExists");
@@ -373,13 +409,15 @@ describe("Attestly", function () {
         chainId,
         {
           surveyHash,
-          ipfsCid,
+          title: "Forged Survey",
+          slug: "forged-survey",
+          questionCount: 1,
           creator: creator.address,
         }
       );
 
       await expect(
-        attestly.publishSurvey(surveyHash, ipfsCid, creator.address, signature)
+        attestly.publishSurvey(surveyHash, ipfsCid, creator.address, "Forged Survey", "forged-survey", 1, signature)
       ).to.be.revertedWithCustomError(attestly, "SignerMismatch");
     });
   });
@@ -400,16 +438,17 @@ describe("Attestly", function () {
 
       const ipfsCid = "QmResponseData0000000000000000000000000000000";
       const blindedId = computeBlindedId(respondent1.address, surveyHash);
+      const answersHash = ethers.keccak256(ethers.toUtf8Bytes("answers-content"));
 
       const signature = await signSubmitResponse(
         respondent1,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid }
+        { surveyHash, blindedId, answerCount: 3, answersHash }
       );
 
       await expect(
-        attestly.submitResponse(surveyHash, blindedId, ipfsCid, signature)
+        attestly.submitResponse(surveyHash, blindedId, ipfsCid, 3, answersHash, signature)
       )
         .to.emit(attestly, "ResponseSubmitted")
         .withArgs(
@@ -437,16 +476,17 @@ describe("Attestly", function () {
       } = await loadFixture(deployWithOneResponse);
 
       const ipfsCid = "QmDuplicateResponse000000000000000000000000000";
+      const answersHash = ethers.keccak256(ethers.toUtf8Bytes("dup-answers"));
 
       const signature = await signSubmitResponse(
         respondent1,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid }
+        { surveyHash, blindedId, answerCount: 3, answersHash }
       );
 
       await expect(
-        attestly.submitResponse(surveyHash, blindedId, ipfsCid, signature)
+        attestly.submitResponse(surveyHash, blindedId, ipfsCid, 3, answersHash, signature)
       ).to.be.revertedWithCustomError(attestly, "DuplicateResponse");
     });
 
@@ -459,12 +499,13 @@ describe("Attestly", function () {
       );
       const ipfsCid = "QmOrphanResponse000000000000000000000000000000";
       const blindedId = computeBlindedId(respondent1.address, fakeSurveyHash);
+      const answersHash = ethers.keccak256(ethers.toUtf8Bytes("orphan-answers"));
 
       const signature = await signSubmitResponse(
         respondent1,
         contractAddress,
         chainId,
-        { surveyHash: fakeSurveyHash, ipfsCid }
+        { surveyHash: fakeSurveyHash, blindedId, answerCount: 1, answersHash }
       );
 
       await expect(
@@ -472,6 +513,8 @@ describe("Attestly", function () {
           fakeSurveyHash,
           blindedId,
           ipfsCid,
+          1,
+          answersHash,
           signature
         )
       ).to.be.revertedWithCustomError(attestly, "SurveyNotFound");
@@ -493,16 +536,17 @@ describe("Attestly", function () {
       // Attempt to submit after closure
       const ipfsCid = "QmLateResponse00000000000000000000000000000000";
       const blindedId = computeBlindedId(respondent2.address, surveyHash);
+      const answersHash = ethers.keccak256(ethers.toUtf8Bytes("late-answers"));
 
       const signature = await signSubmitResponse(
         respondent2,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid }
+        { surveyHash, blindedId, answerCount: 2, answersHash }
       );
 
       await expect(
-        attestly.submitResponse(surveyHash, blindedId, ipfsCid, signature)
+        attestly.submitResponse(surveyHash, blindedId, ipfsCid, 2, answersHash, signature)
       ).to.be.revertedWithCustomError(attestly, "SurveyAlreadyClosed");
     });
 
@@ -517,22 +561,28 @@ describe("Attestly", function () {
       } = await loadFixture(deployWithPublishedSurvey);
 
       const ipfsCid = "QmMismatchResponse0000000000000000000000000000";
+      const answersHash = ethers.keccak256(ethers.toUtf8Bytes("mismatch-answers"));
 
       // respondent1 signs but we pass respondent2's blinded ID
+      const correctBlindedId = computeBlindedId(respondent1.address, surveyHash);
       const wrongBlindedId = computeBlindedId(respondent2.address, surveyHash);
 
+      // Sign with respondent1's correct blindedId in the compact struct
       const signature = await signSubmitResponse(
         respondent1,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid }
+        { surveyHash, blindedId: correctBlindedId, answerCount: 1, answersHash }
       );
 
+      // But submit with respondent2's blindedId — contract will recompute from signer and mismatch
       await expect(
         attestly.submitResponse(
           surveyHash,
           wrongBlindedId,
           ipfsCid,
+          1,
+          answersHash,
           signature
         )
       ).to.be.revertedWithCustomError(attestly, "BlindedIdMismatch");
@@ -550,31 +600,37 @@ describe("Attestly", function () {
 
       // Respondent 1
       const blindedId1 = computeBlindedId(respondent1.address, surveyHash);
+      const answersHash1 = ethers.keccak256(ethers.toUtf8Bytes("r1-answers"));
       const sig1 = await signSubmitResponse(
         respondent1,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid: "QmResponse1_00000000000000000000000000000000" }
+        { surveyHash, blindedId: blindedId1, answerCount: 3, answersHash: answersHash1 }
       );
       await attestly.submitResponse(
         surveyHash,
         blindedId1,
         "QmResponse1_00000000000000000000000000000000",
+        3,
+        answersHash1,
         sig1
       );
 
       // Respondent 2
       const blindedId2 = computeBlindedId(respondent2.address, surveyHash);
+      const answersHash2 = ethers.keccak256(ethers.toUtf8Bytes("r2-answers"));
       const sig2 = await signSubmitResponse(
         respondent2,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid: "QmResponse2_00000000000000000000000000000000" }
+        { surveyHash, blindedId: blindedId2, answerCount: 3, answersHash: answersHash2 }
       );
       await attestly.submitResponse(
         surveyHash,
         blindedId2,
         "QmResponse2_00000000000000000000000000000000",
+        3,
+        answersHash2,
         sig2
       );
 
@@ -720,32 +776,38 @@ describe("Attestly", function () {
 
       // Submit response 1
       const blindedId1 = computeBlindedId(respondent1.address, surveyHash);
+      const ah1 = ethers.keccak256(ethers.toUtf8Bytes("resp1-answers"));
       const sig1 = await signSubmitResponse(
         respondent1,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid: "QmResp1_000000000000000000000000000000000000" }
+        { surveyHash, blindedId: blindedId1, answerCount: 3, answersHash: ah1 }
       );
       await attestly.submitResponse(
         surveyHash,
         blindedId1,
         "QmResp1_000000000000000000000000000000000000",
+        3,
+        ah1,
         sig1
       );
       expect(await attestly.getResponseCount(surveyHash)).to.equal(1n);
 
       // Submit response 2
       const blindedId2 = computeBlindedId(respondent2.address, surveyHash);
+      const ah2 = ethers.keccak256(ethers.toUtf8Bytes("resp2-answers"));
       const sig2 = await signSubmitResponse(
         respondent2,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid: "QmResp2_000000000000000000000000000000000000" }
+        { surveyHash, blindedId: blindedId2, answerCount: 3, answersHash: ah2 }
       );
       await attestly.submitResponse(
         surveyHash,
         blindedId2,
         "QmResp2_000000000000000000000000000000000000",
+        3,
+        ah2,
         sig2
       );
       expect(await attestly.getResponseCount(surveyHash)).to.equal(2n);
@@ -778,6 +840,9 @@ describe("Attestly", function () {
       const ipfsCid = "QmEIP712TestSurvey0000000000000000000000000000";
 
       // Sign using ethers.js signTypedData (this is the real EIP-712 flow)
+      const title = "EIP712 Test Survey";
+      const slug = "eip712-test-survey";
+      const questionCount = 2;
       const signature = await creator.signTypedData(
         {
           name: "Attestly",
@@ -788,20 +853,24 @@ describe("Attestly", function () {
         {
           PublishSurvey: [
             { name: "surveyHash", type: "bytes32" },
-            { name: "ipfsCid", type: "string" },
+            { name: "title", type: "string" },
+            { name: "slug", type: "string" },
+            { name: "questionCount", type: "uint8" },
             { name: "creator", type: "address" },
           ],
         },
         {
           surveyHash,
-          ipfsCid,
+          title,
+          slug,
+          questionCount,
           creator: creator.address,
         }
       );
 
       // Contract should accept this signature
       await expect(
-        attestly.publishSurvey(surveyHash, ipfsCid, creator.address, signature)
+        attestly.publishSurvey(surveyHash, ipfsCid, creator.address, title, slug, questionCount, signature)
       ).to.not.be.reverted;
     });
 
@@ -814,6 +883,10 @@ describe("Attestly", function () {
       );
       const ipfsCid = "QmWrongDomainTest00000000000000000000000000000";
 
+      const title = "Wrong Domain Test";
+      const slug = "wrong-domain-test";
+      const questionCount = 1;
+
       // Sign with wrong domain name
       const signature = await creator.signTypedData(
         {
@@ -825,20 +898,24 @@ describe("Attestly", function () {
         {
           PublishSurvey: [
             { name: "surveyHash", type: "bytes32" },
-            { name: "ipfsCid", type: "string" },
+            { name: "title", type: "string" },
+            { name: "slug", type: "string" },
+            { name: "questionCount", type: "uint8" },
             { name: "creator", type: "address" },
           ],
         },
         {
           surveyHash,
-          ipfsCid,
+          title,
+          slug,
+          questionCount,
           creator: creator.address,
         }
       );
 
       // Should revert because recovered address won't match creator
       await expect(
-        attestly.publishSurvey(surveyHash, ipfsCid, creator.address, signature)
+        attestly.publishSurvey(surveyHash, ipfsCid, creator.address, title, slug, questionCount, signature)
       ).to.be.revertedWithCustomError(attestly, "SignerMismatch");
     });
   });
@@ -901,47 +978,59 @@ describe("Attestly", function () {
         ethers.toUtf8Bytes("lifecycle-test-survey")
       );
       const surveyIpfsCid = "QmLifecycleSurvey00000000000000000000000000000";
+      const lcTitle = "Lifecycle Survey";
+      const lcSlug = "lifecycle-test-survey";
+      const lcQCount = 2;
 
       const publishSig = await signPublishSurvey(
         creator,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid: surveyIpfsCid, creator: creator.address }
+        { surveyHash, title: lcTitle, slug: lcSlug, questionCount: lcQCount, creator: creator.address }
       );
       await attestly.publishSurvey(
         surveyHash,
         surveyIpfsCid,
         creator.address,
+        lcTitle,
+        lcSlug,
+        lcQCount,
         publishSig
       );
 
       // 2. Submit response from respondent1
       const blindedId1 = computeBlindedId(respondent1.address, surveyHash);
+      const lcAh1 = ethers.keccak256(ethers.toUtf8Bytes("lc-r1-answers"));
       const resp1Sig = await signSubmitResponse(
         respondent1,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid: "QmResp1Lifecycle000000000000000000000000000" }
+        { surveyHash, blindedId: blindedId1, answerCount: 2, answersHash: lcAh1 }
       );
       await attestly.submitResponse(
         surveyHash,
         blindedId1,
         "QmResp1Lifecycle000000000000000000000000000",
+        2,
+        lcAh1,
         resp1Sig
       );
 
       // 3. Submit response from respondent2
       const blindedId2 = computeBlindedId(respondent2.address, surveyHash);
+      const lcAh2 = ethers.keccak256(ethers.toUtf8Bytes("lc-r2-answers"));
       const resp2Sig = await signSubmitResponse(
         respondent2,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid: "QmResp2Lifecycle000000000000000000000000000" }
+        { surveyHash, blindedId: blindedId2, answerCount: 2, answersHash: lcAh2 }
       );
       await attestly.submitResponse(
         surveyHash,
         blindedId2,
         "QmResp2Lifecycle000000000000000000000000000",
+        2,
+        lcAh2,
         resp2Sig
       );
 
@@ -971,17 +1060,20 @@ describe("Attestly", function () {
 
       // 6. Verify no more responses can be submitted after closure
       const lateBlindedId = computeBlindedId(creator.address, surveyHash);
+      const lateAh = ethers.keccak256(ethers.toUtf8Bytes("late-answers"));
       const lateSig = await signSubmitResponse(
         creator,
         contractAddress,
         chainId,
-        { surveyHash, ipfsCid: "QmLateResponse0000000000000000000000000000000" }
+        { surveyHash, blindedId: lateBlindedId, answerCount: 1, answersHash: lateAh }
       );
       await expect(
         attestly.submitResponse(
           surveyHash,
           lateBlindedId,
           "QmLateResponse0000000000000000000000000000000",
+          1,
+          lateAh,
           lateSig
         )
       ).to.be.revertedWithCustomError(attestly, "SurveyAlreadyClosed");

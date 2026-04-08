@@ -18,17 +18,14 @@
 
 ## File Structure
 
-- Modify: `src/env.js` -- add BASE_RPC_URL, RELAYER_PRIVATE_KEY, ATTESTLY_CONTRACT_ADDRESS
+- Modify: `src/env.js` -- add BASE_RPC_URL, RELAYER_PRIVATE_KEY, ATTESTLY_CONTRACT_ADDRESS, NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS, NEXT_PUBLIC_CHAIN_ID
 - Create: `src/server/blockchain/provider.ts` -- Base L2 JSON-RPC provider setup
-- Create: `src/server/blockchain/relayer.ts` -- transaction submission with nonce management
+- Create: `src/server/blockchain/relayer.ts` -- transaction submission with gas ceiling and confirmation
 - Create: `src/server/blockchain/contract.ts` -- Attestly contract client (typed wrapper)
 - Create: `src/server/blockchain/abi.ts` -- Attestly contract ABI (from Hardhat compilation)
 - Create: `src/server/blockchain/index.ts` -- barrel export
-- Create: `src/server/jobs/handlers/publish-survey.ts` -- PUBLISH_SURVEY handler
-- Create: `src/server/jobs/handlers/submit-response.ts` -- SUBMIT_RESPONSE handler
-- Create: `src/server/jobs/handlers/close-survey.ts` -- CLOSE_SURVEY handler
-- Create: `src/server/jobs/handlers/verify-responses.ts` -- VERIFY_RESPONSES handler
-- Modify: `src/server/jobs/handlers.ts` -- replace placeholder handlers with real implementations
+
+Note: Job handler files (`handlers/publish-survey.ts`, etc.) are created in Sub-Plan 2-4b. This plan provides only the infrastructure they depend on.
 
 ---
 
@@ -39,7 +36,7 @@
 
 - [ ] **Step 1: Add blockchain env vars to src/env.js**
 
-Add three new server-side environment variables to the `server` section of `src/env.js`:
+Add to the `server` section of `src/env.js`:
 
 ```typescript
 BASE_RPC_URL: z.string().url().optional(),
@@ -47,12 +44,21 @@ RELAYER_PRIVATE_KEY: z.string().min(1).optional(),
 ATTESTLY_CONTRACT_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
 ```
 
-And add corresponding entries to the `runtimeEnv` section:
+Add to the `client` section of `src/env.js`:
+
+```typescript
+NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+NEXT_PUBLIC_CHAIN_ID: z.string().optional(),
+```
+
+Add corresponding entries to the `runtimeEnv` section:
 
 ```typescript
 BASE_RPC_URL: process.env.BASE_RPC_URL,
 RELAYER_PRIVATE_KEY: process.env.RELAYER_PRIVATE_KEY,
 ATTESTLY_CONTRACT_ADDRESS: process.env.ATTESTLY_CONTRACT_ADDRESS,
+NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS: process.env.NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS,
+NEXT_PUBLIC_CHAIN_ID: process.env.NEXT_PUBLIC_CHAIN_ID,
 ```
 
 All three are optional so the app can still boot without blockchain configuration (Phase 1 features don't need blockchain). The blockchain modules will check for these at runtime and throw descriptive errors if blockchain operations are attempted without configuration.
@@ -268,6 +274,9 @@ export const attestlyAbi = [
       { name: "surveyHash", type: "bytes32" },
       { name: "ipfsCid", type: "string" },
       { name: "creator", type: "address" },
+      { name: "title", type: "string" },
+      { name: "slug", type: "string" },
+      { name: "questionCount", type: "uint8" },
       { name: "signature", type: "bytes" },
     ],
     outputs: [],
@@ -280,6 +289,8 @@ export const attestlyAbi = [
       { name: "surveyHash", type: "bytes32" },
       { name: "blindedId", type: "bytes32" },
       { name: "ipfsCid", type: "string" },
+      { name: "answerCount", type: "uint8" },
+      { name: "answersHash", type: "bytes32" },
       { name: "signature", type: "bytes" },
     ],
     outputs: [],
@@ -383,16 +394,22 @@ export function getWriteContract() {
 /**
  * Submit a publishSurvey transaction via the relayer.
  *
- * @param surveyHash - EIP-712 hash of the survey (bytes32)
+ * @param surveyHash - Chain-independent content hash of the survey (bytes32)
  * @param ipfsCid - IPFS CID of the pinned survey JSON
  * @param creator - Creator's wallet address
- * @param signature - Creator's EIP-712 signature
+ * @param title - Survey title (compact signing payload)
+ * @param slug - Survey slug (compact signing payload)
+ * @param questionCount - Number of questions (compact signing payload)
+ * @param signature - Creator's EIP-712 signature over the compact PublishSurvey struct
  * @returns Transaction hash
  */
 export async function publishSurveyOnChain(
   surveyHash: Hex,
   ipfsCid: string,
   creator: `0x${string}`,
+  title: string,
+  slug: string,
+  questionCount: number,
   signature: Hex,
 ): Promise<Hex> {
   const walletClient = getWalletClient();
@@ -400,7 +417,7 @@ export async function publishSurveyOnChain(
     address: getContractAddress(),
     abi: attestlyAbi,
     functionName: "publishSurvey",
-    args: [surveyHash, ipfsCid, creator, signature],
+    args: [surveyHash, ipfsCid, creator, title, slug, questionCount, signature],
   });
   return hash;
 }
@@ -408,16 +425,20 @@ export async function publishSurveyOnChain(
 /**
  * Submit a submitResponse transaction via the relayer.
  *
- * @param surveyHash - EIP-712 hash of the survey (bytes32)
+ * @param surveyHash - Chain-independent content hash of the survey (bytes32)
  * @param blindedId - Blinded respondent identifier (bytes32)
  * @param ipfsCid - IPFS CID of the pinned response JSON
- * @param signature - Respondent's EIP-712 signature
+ * @param answerCount - Number of answers (compact signing payload)
+ * @param answersHash - Chain-independent content hash of answers (compact signing payload)
+ * @param signature - Respondent's EIP-712 signature over the compact SubmitResponse struct
  * @returns Transaction hash
  */
 export async function submitResponseOnChain(
   surveyHash: Hex,
   blindedId: Hex,
   ipfsCid: string,
+  answerCount: number,
+  answersHash: Hex,
   signature: Hex,
 ): Promise<Hex> {
   const walletClient = getWalletClient();
@@ -425,7 +446,7 @@ export async function submitResponseOnChain(
     address: getContractAddress(),
     abi: attestlyAbi,
     functionName: "submitResponse",
-    args: [surveyHash, blindedId, ipfsCid, signature],
+    args: [surveyHash, blindedId, ipfsCid, answerCount, answersHash, signature],
   });
   return hash;
 }
@@ -646,35 +667,59 @@ export async function waitForTransaction(
  * Submit a contract write call and wait for confirmation.
  * This is the main entry point for relayer operations.
  *
+ * Gas ceiling enforcement:
+ * - Before submitting, estimate gas and check against the ceiling (10x expected).
+ * - If ceiling exceeded, throws GasCeilingExceededError (job stays PENDING for retry).
+ *
  * Error handling:
  * - Contract reverts -> throws PermanentTransactionError (job should be marked FAILED)
  * - Gas ceiling exceeded -> throws GasCeilingExceededError (job should stay PENDING)
  * - Network/nonce errors -> throws regular Error (job should stay PENDING for retry)
  *
+ * @param estimateFn - An async function that estimates gas for the operation
  * @param submitFn - An async function that submits the transaction and returns the tx hash
- * @param description - Human-readable description for logging (e.g., "publishSurvey for 0x4d2e...")
+ * @param operationName - The contract function name (e.g., "publishSurvey") for ceiling lookup
+ * @param description - Human-readable description for logging
  * @returns Object containing the tx hash and receipt
  */
 export async function relayAndConfirm(
+  estimateFn: () => Promise<bigint>,
   submitFn: () => Promise<Hex>,
+  operationName: string,
   description: string,
 ): Promise<{ txHash: Hex; receipt: TransactionReceipt }> {
+  console.log(`[Relayer] Estimating gas for: ${description}`);
+
+  // Check gas ceiling before submitting
+  try {
+    const estimatedGas = await estimateFn();
+    checkGasCeiling(operationName, estimatedGas);
+    console.log(`[Relayer] Gas estimate: ${estimatedGas} (within ceiling)`);
+  } catch (error) {
+    if (error instanceof GasCeilingExceededError) throw error;
+    if (isContractRevert(error)) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new PermanentTransactionError(
+        `[Relayer] Contract revert during gas estimation for ${description}: ${msg}`,
+      );
+    }
+    // Gas estimation network failure — treat as transient
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`[Relayer] Gas estimation failed for ${description}: ${msg}`);
+  }
+
   console.log(`[Relayer] Submitting: ${description}`);
 
   let txHash: Hex;
   try {
     txHash = await submitFn();
   } catch (error) {
-    // Check if the submission itself was a contract revert (e.g., from estimateGas)
+    // Check if the submission itself was a contract revert
     if (isContractRevert(error)) {
       const msg = error instanceof Error ? error.message : String(error);
       throw new PermanentTransactionError(
         `[Relayer] Contract revert during submission of ${description}: ${msg}`,
       );
-    }
-    // Gas ceiling errors pass through as-is
-    if (error instanceof GasCeilingExceededError) {
-      throw error;
     }
     // All other errors are transient (network, nonce, etc.)
     const msg = error instanceof Error ? error.message : String(error);
