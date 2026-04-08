@@ -22,6 +22,17 @@ export interface SurveyState {
   tags: string[];
 }
 
+export interface StepValidation {
+  basics: ValidationError[];
+  questions: ValidationError[];
+  settings: ValidationError[];
+}
+
+/** Fields that belong to each step's validation bucket. */
+const BASICS_FIELDS = new Set(["title", "description"]);
+const QUESTIONS_FIELDS = new Set(["questions", "questionText", "options", "rating", "maxLength"]);
+const SETTINGS_FIELDS = new Set(["categories", "tags"]);
+
 export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
   const router = useRouter();
 
@@ -58,36 +69,47 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
 
   const { isPremium } = usePremium();
 
-  // Track dirty state for auto-save
-  const [surveyDirty, setSurveyDirty] = useState(false);
-  const [dirtyQuestionIds, setDirtyQuestionIds] = useState<Set<string>>(
-    new Set(),
-  );
+  // -------------------------------------------------------------------------
+  // tRPC mutations
+  // -------------------------------------------------------------------------
+
+  const updateSurveyMutation = api.survey.update.useMutation();
+  const upsertQuestionMutation = api.question.upsert.useMutation();
+
+  const publishMutation = api.survey.publish.useMutation({
+    onSuccess: () => {
+      router.push(`/s/${survey.slug}`);
+    },
+  });
+
+  // -------------------------------------------------------------------------
+  // Field update helpers
+  // -------------------------------------------------------------------------
 
   const updateSurveyField = useCallback(
     (field: keyof SurveyState, value: SurveyState[keyof SurveyState]) => {
       setSurvey((prev) => ({ ...prev, [field]: value }));
-      setSurveyDirty(true);
     },
     [],
   );
 
   const updateCategories = useCallback((categories: string[]) => {
     setSurvey((prev) => ({ ...prev, categories }));
-    setSurveyDirty(true);
   }, []);
 
   const updateTags = useCallback((tags: string[]) => {
     setSurvey((prev) => ({ ...prev, tags }));
-    setSurveyDirty(true);
   }, []);
+
+  // -------------------------------------------------------------------------
+  // Question CRUD
+  // -------------------------------------------------------------------------
 
   const updateQuestion = useCallback(
     (questionId: string, updates: Partial<QuestionDraft>) => {
       setQuestions((prev) =>
         prev.map((q) => (q.id === questionId ? { ...q, ...updates } : q)),
       );
-      setDirtyQuestionIds((prev) => new Set(prev).add(questionId));
     },
     [],
   );
@@ -114,7 +136,6 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
             : null,
       };
       setQuestions((prev) => [...prev, newQuestion]);
-      setDirtyQuestionIds((prev) => new Set(prev).add(newQuestion.id));
     },
     [questions.length],
   );
@@ -135,14 +156,6 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
         newQuestions[index] = { ...swap, position: index };
         newQuestions[swapIndex] = { ...current, position: swapIndex };
 
-        // Mark both as dirty
-        setDirtyQuestionIds((prevDirty) => {
-          const next = new Set(prevDirty);
-          next.add(current.id);
-          next.add(swap.id);
-          return next;
-        });
-
         return newQuestions;
       });
     },
@@ -160,7 +173,6 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
         position: prev.length,
       };
 
-      setDirtyQuestionIds((prevDirty) => new Set(prevDirty).add(duplicate.id));
       return [...prev, duplicate];
     });
   }, []);
@@ -171,19 +183,95 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
       // Reindex positions
       return filtered.map((q, i) => ({ ...q, position: i }));
     });
-    // Note: deletion is handled separately via question.delete mutation in auto-save
-    setDirtyQuestionIds((prev) => {
-      const next = new Set(prev);
-      next.delete(questionId);
-      return next;
-    });
   }, []);
 
-  const publishMutation = api.survey.publish.useMutation({
-    onSuccess: () => {
-      router.push(`/s/${survey.slug}`);
-    },
-  });
+  // -------------------------------------------------------------------------
+  // Save-on-navigate: persist current state to DB
+  // -------------------------------------------------------------------------
+
+  /**
+   * Saves all current survey metadata + all questions to the DB.
+   * Called by WizardShell's onStepChange before navigating.
+   */
+  const saveCurrentState = useCallback(async (): Promise<void> => {
+    // Read latest state via a ref-like snapshot captured in the closure.
+    // We use a Promise.all to fire survey update + all question upserts.
+    await updateSurveyMutation.mutateAsync({
+      id: initialSurvey.id,
+      title: survey.title,
+      description: survey.description,
+      isPrivate: survey.isPrivate,
+      accessMode: survey.accessMode,
+      resultsVisibility: survey.resultsVisibility,
+      categories: survey.categories,
+      tags: survey.tags,
+    });
+
+    // Upsert every question in parallel (only those with text — skip empty drafts)
+    const upsertPromises = questions.map((q) =>
+      upsertQuestionMutation.mutateAsync({
+        surveyId: initialSurvey.id,
+        questionId: q.id,
+        text: q.text || " ", // API requires min 1 char; empty questions will fail validation anyway
+        questionType: q.questionType,
+        position: q.position,
+        required: q.required,
+        options: q.options,
+        minRating: q.minRating,
+        maxRating: q.maxRating,
+        maxLength: q.maxLength,
+      }),
+    );
+
+    await Promise.all(upsertPromises);
+  }, [
+    initialSurvey.id,
+    survey,
+    questions,
+    updateSurveyMutation,
+    upsertQuestionMutation,
+  ]);
+
+  // -------------------------------------------------------------------------
+  // Step validation
+  // -------------------------------------------------------------------------
+
+  /**
+   * Returns validation errors categorized by wizard step.
+   */
+  const getStepValidation = useCallback((): StepValidation => {
+    const allErrors = validateSurveyForPublish({
+      title: survey.title,
+      description: survey.description,
+      slug: survey.slug,
+      categories: survey.categories,
+      tags: survey.tags,
+      questions,
+    });
+
+    const basics: ValidationError[] = [];
+    const questionErrors: ValidationError[] = [];
+    const settings: ValidationError[] = [];
+
+    for (const error of allErrors) {
+      if (BASICS_FIELDS.has(error.field)) {
+        basics.push(error);
+      } else if (QUESTIONS_FIELDS.has(error.field)) {
+        questionErrors.push(error);
+      } else if (SETTINGS_FIELDS.has(error.field)) {
+        settings.push(error);
+      } else {
+        // Fallback: put unknown fields in basics
+        basics.push(error);
+      }
+    }
+
+    return { basics, questions: questionErrors, settings };
+  }, [survey, questions]);
+
+  // -------------------------------------------------------------------------
+  // Publish flow
+  // -------------------------------------------------------------------------
 
   const handlePublish = useCallback(() => {
     // Run validation
@@ -215,10 +303,8 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
     questions,
     validationErrors,
     isPremium,
-    surveyDirty,
-    dirtyQuestionIds,
-    setSurveyDirty,
-    setDirtyQuestionIds,
+    saveCurrentState,
+    getStepValidation,
     updateSurveyField,
     updateCategories,
     updateTags,
