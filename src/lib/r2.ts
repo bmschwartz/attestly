@@ -28,5 +28,5 @@ export async function uploadToR2(opts: {
   );
 
   // Return the public URL (requires public access on the bucket or a custom domain)
-  return `https://${env.CLOUDFLARE_R2_BUCKET_NAME}.${env.CLOUDFLARE_R2_ACCOUNT_ID}.r2.dev/${opts.key}`;
+  return `${env.CLOUDFLARE_R2_PUBLIC_BASE_URL}/${opts.key}`;
 }
