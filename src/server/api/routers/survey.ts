@@ -35,7 +35,8 @@ export const surveyRouter = createTRPCRouter({
   create: protectedProcedure
     .input(
       z.object({
-        title: z.string().optional(),
+        title: z.string().min(1).max(200).optional().default("Untitled Survey"),
+        description: z.string().max(2000).optional().default(""),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -61,7 +62,7 @@ export const surveyRouter = createTRPCRouter({
           survey = await ctx.db.survey.create({
             data: {
               title: baseTitle,
-              description: "",
+              description: input.description ?? "",
               slug,
               status: "DRAFT",
               creator: { connect: { id: ctx.userId } },
