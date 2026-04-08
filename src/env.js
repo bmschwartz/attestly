@@ -16,6 +16,8 @@ export const env = createEnv({
     CLOUDFLARE_R2_BUCKET_NAME: z.string().min(1),
     CLOUDFLARE_R2_PUBLIC_BASE_URL: z.string().url(),
     GEMINI_API_KEY: z.string().min(1).optional(),
+    PINATA_JWT: z.string().min(1).optional(),
+    PINATA_GATEWAY_URL: z.string().url().optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -46,6 +48,8 @@ export const env = createEnv({
     CLOUDFLARE_R2_BUCKET_NAME: process.env.CLOUDFLARE_R2_BUCKET_NAME,
     CLOUDFLARE_R2_PUBLIC_BASE_URL: process.env.CLOUDFLARE_R2_PUBLIC_BASE_URL,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    PINATA_JWT: process.env.PINATA_JWT,
+    PINATA_GATEWAY_URL: process.env.PINATA_GATEWAY_URL,
     NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
     NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS:
       process.env.NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS,

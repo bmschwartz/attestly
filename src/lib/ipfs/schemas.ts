@@ -1,0 +1,46 @@
+import { z } from "zod";
+
+// ── IPFS Survey Schemas ──────────────────────────────────────────────
+
+export const ipfsSurveyQuestionSchema = z.object({
+  text: z.string().min(1),
+  questionType: z.string().min(1),
+  position: z.number().int().min(0).max(255),
+  required: z.boolean(),
+  options: z.array(z.string()).optional(),
+  minRating: z.number().int().min(0).max(255).optional(),
+  maxRating: z.number().int().min(0).max(255).optional(),
+  maxLength: z.number().int().min(0).max(65535).optional(),
+});
+
+export const ipfsSurveySchema = z.object({
+  version: z.literal("1"),
+  title: z.string().min(1),
+  description: z.string(),
+  creator: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+  slug: z.string().min(1),
+  isPrivate: z.boolean(),
+  accessMode: z.string().min(1),
+  resultsVisibility: z.string().min(1),
+  questions: z.array(ipfsSurveyQuestionSchema).min(1),
+});
+
+export type IpfsSurveyJSON = z.infer<typeof ipfsSurveySchema>;
+
+// ── IPFS Response Schemas ────────────────────────────────────────────
+
+export const ipfsResponseAnswerSchema = z.object({
+  questionIndex: z.number().int().min(0).max(255),
+  questionType: z.string().min(1),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+});
+
+export const ipfsResponseSchema = z.object({
+  version: z.literal("1"),
+  surveyHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+  respondent: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+  answers: z.array(ipfsResponseAnswerSchema).min(1),
+  signature: z.string().regex(/^0x[0-9a-fA-F]+$/),
+});
+
+export type IpfsResponseJSON = z.infer<typeof ipfsResponseSchema>;
