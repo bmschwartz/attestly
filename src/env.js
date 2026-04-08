@@ -18,6 +18,12 @@ export const env = createEnv({
     GEMINI_API_KEY: z.string().min(1).optional(),
     PINATA_JWT: z.string().min(1).optional(),
     PINATA_GATEWAY_URL: z.string().url().optional(),
+    BASE_RPC_URL: z.string().url().optional(),
+    RELAYER_PRIVATE_KEY: z.string().min(1).optional(),
+    ATTESTLY_CONTRACT_ADDRESS: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]{40}$/)
+      .optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -50,6 +56,9 @@ export const env = createEnv({
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     PINATA_JWT: process.env.PINATA_JWT,
     PINATA_GATEWAY_URL: process.env.PINATA_GATEWAY_URL,
+    BASE_RPC_URL: process.env.BASE_RPC_URL,
+    RELAYER_PRIVATE_KEY: process.env.RELAYER_PRIVATE_KEY,
+    ATTESTLY_CONTRACT_ADDRESS: process.env.ATTESTLY_CONTRACT_ADDRESS,
     NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
     NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS:
       process.env.NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS,
