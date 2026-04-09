@@ -21,7 +21,8 @@ function getClient(): PinataSDK {
 }
 
 /**
- * Pin a JSON object to IPFS. Returns the CID string.
+ * @internal — Use pinBlob with canonicalized bytes for deterministic CIDs.
+ * This function uses the SDK's internal serialization which is NOT deterministic.
  */
 export async function pinJSON(
   data: Record<string, unknown>,

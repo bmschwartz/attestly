@@ -8,6 +8,7 @@ import { submitResponseOnChain } from "~/server/blockchain/contract";
 import { getPublicClient } from "~/server/blockchain/provider";
 import { attestlyAbi } from "~/server/blockchain/abi";
 import { relayAndConfirm } from "~/server/blockchain/relayer";
+import { getRelayerAddress } from "~/server/blockchain/provider";
 import type { Hex } from "viem";
 
 /**
@@ -123,6 +124,7 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
         address: contractAddress,
         abi: attestlyAbi,
         functionName: "submitResponse",
+        account: getRelayerAddress(),
         args: [
           surveyHash as Hex,
           blindedId as Hex,

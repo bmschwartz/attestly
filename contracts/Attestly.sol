@@ -81,7 +81,6 @@ contract Attestly is
     error SurveyAlreadyExists(bytes32 surveyHash);
     error SurveyNotFound(bytes32 surveyHash);
     error SurveyAlreadyClosed(bytes32 surveyHash);
-    error InvalidSignature();
     error SignerMismatch(address expected, address recovered);
     error DuplicateResponse(bytes32 surveyHash, bytes32 blindedId);
     error BlindedIdMismatch(bytes32 expected, bytes32 computed);

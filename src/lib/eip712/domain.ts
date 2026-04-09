@@ -1,4 +1,9 @@
 import type { Hex, TypedDataDomain } from "viem";
+import {
+  publishSurveyTypes,
+  submitResponseTypes,
+  closeSurveyTypes,
+} from "./types";
 
 export function getAttestlyDomain(): TypedDataDomain {
   const contractAddress =
@@ -54,15 +59,7 @@ export function buildPublishSurveyTypedData(message: {
 }) {
   return {
     domain: getAttestlyDomain(),
-    types: {
-      PublishSurvey: [
-        { name: "surveyHash", type: "bytes32" },
-        { name: "title", type: "string" },
-        { name: "slug", type: "string" },
-        { name: "questionCount", type: "uint8" },
-        { name: "creator", type: "address" },
-      ],
-    },
+    types: publishSurveyTypes,
     primaryType: "PublishSurvey" as const,
     message,
   };
@@ -81,14 +78,7 @@ export function buildSubmitResponseTypedData(message: {
 }) {
   return {
     domain: getAttestlyDomain(),
-    types: {
-      SubmitResponse: [
-        { name: "surveyHash", type: "bytes32" },
-        { name: "blindedId", type: "bytes32" },
-        { name: "answerCount", type: "uint8" },
-        { name: "answersHash", type: "bytes32" },
-      ],
-    },
+    types: submitResponseTypes,
     primaryType: "SubmitResponse" as const,
     message,
   };
@@ -104,11 +94,7 @@ export function buildCloseSurveyTypedData(message: {
 }) {
   return {
     domain: getAttestlyDomain(),
-    types: {
-      CloseSurvey: [
-        { name: "surveyHash", type: "bytes32" },
-      ],
-    },
+    types: closeSurveyTypes,
     primaryType: "CloseSurvey" as const,
     message,
   };

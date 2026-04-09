@@ -7,10 +7,10 @@ export const ipfsSurveyQuestionSchema = z.object({
   questionType: z.number().int().min(0).max(255),
   position: z.number().int().min(0).max(255),
   required: z.boolean(),
-  options: z.array(z.string()).optional(),
-  minRating: z.number().int().min(0).max(255).optional(),
-  maxRating: z.number().int().min(0).max(255).optional(),
-  maxLength: z.number().int().min(0).max(65535).optional(),
+  options: z.array(z.string()),  // required, empty array for non-select types
+  minRating: z.number().int().min(0).max(255),  // required, 0 default for non-rating types
+  maxRating: z.number().int().min(0).max(255),
+  maxLength: z.number().int().min(0).max(65535),
 });
 
 export const ipfsSurveySchema = z.object({

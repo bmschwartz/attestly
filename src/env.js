@@ -14,7 +14,7 @@ export const env = createEnv({
     CLOUDFLARE_R2_ACCESS_KEY_ID: z.string().min(1),
     CLOUDFLARE_R2_SECRET_ACCESS_KEY: z.string().min(1),
     CLOUDFLARE_R2_BUCKET_NAME: z.string().min(1),
-    CLOUDFLARE_R2_PUBLIC_BASE_URL: z.string().url(),
+    CLOUDFLARE_R2_PUBLIC_BASE_URL: z.string().url().optional(),
     GEMINI_API_KEY: z.string().min(1).optional(),
     PINATA_JWT: z.string().min(1).optional(),
     PINATA_GATEWAY_URL: z.string().url().optional(),

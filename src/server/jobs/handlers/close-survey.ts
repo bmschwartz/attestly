@@ -4,6 +4,7 @@ import { closeSurveyOnChain } from "~/server/blockchain/contract";
 import { getPublicClient } from "~/server/blockchain/provider";
 import { attestlyAbi } from "~/server/blockchain/abi";
 import { relayAndConfirm } from "~/server/blockchain/relayer";
+import { getRelayerAddress } from "~/server/blockchain/provider";
 import { createJob } from "~/server/jobs/queue";
 import type { Hex } from "viem";
 
@@ -53,6 +54,7 @@ export async function handleCloseSurvey(job: BackgroundJob): Promise<void> {
         address: contractAddress,
         abi: attestlyAbi,
         functionName: "closeSurvey",
+        account: getRelayerAddress(),
         args: [surveyHash as Hex, signature as Hex],
       }),
     () => closeSurveyOnChain(surveyHash as Hex, signature as Hex),
@@ -70,7 +72,7 @@ export async function handleCloseSurvey(job: BackgroundJob): Promise<void> {
     where: { id: surveyId },
     data: {
       status: "CLOSED",
-      closedAt: new Date(),
+      closedAt: new Date(Number(block.timestamp) * 1000),
       closeTxHash: txHash,
       closeBlockNumber: receipt.blockNumber.toString(),
       closeBlockTimestamp: new Date(Number(block.timestamp) * 1000),

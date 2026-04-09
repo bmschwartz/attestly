@@ -274,10 +274,26 @@ export async function areDependenciesMet(
       },
     });
     if (pendingPublishJob) return false;
+
+    // Verify that at least one COMPLETED PUBLISH_SURVEY job exists.
+    // If no publish job exists at all, something is wrong — fail permanently.
+    const completedPublishJob = await db.backgroundJob.findFirst({
+      where: {
+        type: "PUBLISH_SURVEY",
+        surveyId: job.surveyId,
+        status: "COMPLETED",
+      },
+    });
+    if (!completedPublishJob) {
+      throw new Error(
+        `No PUBLISH_SURVEY job exists for survey ${job.surveyId}. ` +
+          `Cannot submit response without a publish job.`,
+      );
+    }
   }
 
   if (job.type === "CLOSE_SURVEY" && job.surveyId) {
-    // Check if all SUBMIT_RESPONSE jobs are completed for this survey
+    // Check if any SUBMIT_RESPONSE jobs are still in progress for this survey
     const pendingResponses = await db.backgroundJob.findFirst({
       where: {
         type: "SUBMIT_RESPONSE",
@@ -286,6 +302,24 @@ export async function areDependenciesMet(
       },
     });
     if (pendingResponses) return false;
+
+    // Intentional: If some SUBMIT_RESPONSE jobs have FAILED, we still allow close
+    // to proceed. The survey creator chose to close despite some responses failing
+    // on-chain. This is documented behavior — the creator can see failed responses
+    // in the dashboard.
+    const failedResponses = await db.backgroundJob.count({
+      where: {
+        type: "SUBMIT_RESPONSE",
+        surveyId: job.surveyId,
+        status: "FAILED",
+      },
+    });
+    if (failedResponses > 0) {
+      console.warn(
+        `[areDependenciesMet] CLOSE_SURVEY for survey ${job.surveyId}: ` +
+          `${failedResponses} SUBMIT_RESPONSE job(s) have FAILED. Proceeding with close anyway.`,
+      );
+    }
   }
 
   return true;

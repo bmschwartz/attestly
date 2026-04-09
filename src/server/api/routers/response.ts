@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { TRPCError } from "@trpc/server";
+import { FREE_TIER_LIMITS } from "~/lib/premium";
 
 export const responseRouter = createTRPCRouter({
   start: protectedProcedure
@@ -41,7 +42,7 @@ export const responseRouter = createTRPCRouter({
             deletedAt: null,
           },
         });
-        if (responseCount >= 50) {
+        if (responseCount >= FREE_TIER_LIMITS.maxResponsesPerSurvey) {
           throw new TRPCError({
             code: "FORBIDDEN",
             message: "This survey has reached its response limit",

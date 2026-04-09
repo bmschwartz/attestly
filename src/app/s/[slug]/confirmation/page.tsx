@@ -51,7 +51,7 @@ function VerificationProofSection({
           <div>
             <span className="font-medium text-gray-700">Transaction:</span>{" "}
             <a
-              href={`https://basescan.org/tx/${submitTxHash}`}
+              href={`${process.env.NEXT_PUBLIC_CHAIN_ID === "84532" ? "https://sepolia.basescan.org" : "https://basescan.org"}/tx/${submitTxHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 underline break-all"

@@ -306,6 +306,8 @@ export const surveyRouter = createTRPCRouter({
             message: "Survey must have at least 1 question",
           });
         }
+        // Max 100 questions (also enforces the uint8 ceiling of 255 used in the
+        // EIP-712 questionCount field on-chain)
         if (questions.length > 100) {
           throw new TRPCError({
             code: "BAD_REQUEST",

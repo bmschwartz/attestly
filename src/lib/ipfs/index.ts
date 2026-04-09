@@ -12,7 +12,6 @@ export type { IpfsSurveyJSON, IpfsResponseJSON } from "./schemas";
 
 // Pinata client
 export {
-  pinJSON,
   pinBlob,
   getContent,
   getJSON,

@@ -20,7 +20,7 @@ export default async function SurveyRespondPage({
     notFound();
   }
 
-  if (survey.status === "CLOSED") {
+  if (survey.status === "CLOSED" || survey.status === "PUBLISHING" || survey.status === "CLOSING") {
     redirect(`/s/${slug}`);
   }
 
