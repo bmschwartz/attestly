@@ -75,6 +75,7 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
 
   const updateSurveyMutation = api.survey.update.useMutation();
   const upsertQuestionMutation = api.question.upsert.useMutation();
+  const batchUpsertMutation = api.question.batchUpsert.useMutation();
 
   const publishMutation = api.survey.publish.useMutation({
     onSuccess: () => {
@@ -207,29 +208,28 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
       tags: survey.tags,
     });
 
-    // Upsert every question in parallel (only those with text — skip empty drafts)
-    const upsertPromises = questions.map((q) =>
-      upsertQuestionMutation.mutateAsync({
-        surveyId: initialSurvey.id,
+    // Batch upsert all questions in a single transaction to avoid
+    // unique constraint collisions on (surveyId, position) during reorders.
+    await batchUpsertMutation.mutateAsync({
+      surveyId: initialSurvey.id,
+      questions: questions.map((q) => ({
         questionId: q.id,
         text: q.text || " ", // API requires min 1 char; empty questions will fail validation anyway
         questionType: q.questionType,
         position: q.position,
         required: q.required,
         options: q.options,
-        minRating: q.minRating,
-        maxRating: q.maxRating,
-        maxLength: q.maxLength,
-      }),
-    );
-
-    await Promise.all(upsertPromises);
+        minRating: q.minRating ?? null,
+        maxRating: q.maxRating ?? null,
+        maxLength: q.maxLength ?? null,
+      })),
+    });
   }, [
     initialSurvey.id,
     survey,
     questions,
     updateSurveyMutation,
-    upsertQuestionMutation,
+    batchUpsertMutation,
   ]);
 
   // -------------------------------------------------------------------------
@@ -323,6 +323,6 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
     handlePublish,
     confirmPublish,
     isPublishing: publishMutation.isPending,
-    isSaving: updateSurveyMutation.isPending || upsertQuestionMutation.isPending,
+    isSaving: updateSurveyMutation.isPending || batchUpsertMutation.isPending,
   };
 }

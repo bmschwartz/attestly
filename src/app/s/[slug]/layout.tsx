@@ -21,18 +21,22 @@ export default function SurveySlugLayout({
   const { authenticated } = usePrivy();
 
   const isConfirmationPage = pathname.endsWith("/confirmation");
+  const isEditPage = pathname.includes("/edit");
+  const isVerifyPage = pathname.endsWith("/verify");
+  const isResultsPage = pathname.endsWith("/results");
+  const skipCheck = isConfirmationPage || isEditPage || isVerifyPage || isResultsPage;
 
-  // Only check if authenticated and not already on the confirmation page
+  // Only check for submitted response on the respond/landing pages
   const { data: confirmation } = api.response.getConfirmation.useQuery(
     { slug: params.slug },
     {
-      enabled: authenticated && !isConfirmationPage,
+      enabled: authenticated && !skipCheck,
       retry: false,
     },
   );
 
   useEffect(() => {
-    if (confirmation && !isConfirmationPage) {
+    if (confirmation && !skipCheck) {
       router.replace(`/s/${params.slug}/confirmation`);
     }
   }, [confirmation, isConfirmationPage, router, params.slug]);

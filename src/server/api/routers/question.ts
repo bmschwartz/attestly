@@ -47,45 +47,36 @@ export const questionRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await verifyDraftSurveyOwnership(ctx.db, input.surveyId, ctx.userId);
 
+      const questionData = {
+        text: input.text,
+        questionType: input.questionType,
+        position: input.position,
+        required: input.required,
+        options: input.options,
+        minRating: input.minRating,
+        maxRating: input.maxRating,
+        maxLength: input.maxLength,
+      };
+
       if (input.questionId) {
-        const existing = await ctx.db.question.findUnique({
+        // Upsert: update if exists, create if not (handles client-generated IDs)
+        return ctx.db.question.upsert({
           where: { id: input.questionId },
-          select: { surveyId: true },
-        });
-        if (existing?.surveyId !== input.surveyId) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Question not found in this survey",
-          });
-        }
-        return ctx.db.question.update({
-          where: { id: input.questionId },
-          data: {
-            text: input.text,
-            questionType: input.questionType,
-            position: input.position,
-            required: input.required,
-            options: input.options,
-            minRating: input.minRating,
-            maxRating: input.maxRating,
-            maxLength: input.maxLength,
-          },
-        });
-      } else {
-        return ctx.db.question.create({
-          data: {
+          update: questionData,
+          create: {
+            id: input.questionId,
             surveyId: input.surveyId,
-            text: input.text,
-            questionType: input.questionType,
-            position: input.position,
-            required: input.required,
-            options: input.options,
-            minRating: input.minRating,
-            maxRating: input.maxRating,
-            maxLength: input.maxLength,
+            ...questionData,
           },
         });
       }
+
+      return ctx.db.question.create({
+        data: {
+          surveyId: input.surveyId,
+          ...questionData,
+        },
+      });
     }),
 
   delete: protectedProcedure
@@ -113,6 +104,76 @@ export const questionRouter = createTRPCRouter({
       });
 
       return { success: true };
+    }),
+
+  batchUpsert: protectedProcedure
+    .input(
+      z.object({
+        surveyId: z.string(),
+        questions: z.array(
+          z.object({
+            questionId: z.uuid(),
+            text: z.string().min(1).max(500),
+            questionType: z.enum(["SINGLE_SELECT", "MULTIPLE_CHOICE", "RATING", "FREE_TEXT"]),
+            position: z.number().int().min(0).max(255),
+            required: z.boolean().default(false),
+            options: z.array(z.string()).default([]),
+            minRating: z.number().int().nullable().default(null),
+            maxRating: z.number().int().nullable().default(null),
+            maxLength: z.number().int().nullable().default(null),
+          }),
+        ),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await verifyDraftSurveyOwnership(ctx.db, input.surveyId, ctx.userId);
+
+      return ctx.db.$transaction(async (tx) => {
+        // Set each existing question to a unique negative position to avoid
+        // unique constraint collisions on (surveyId, position) during upserts.
+        const existing = await tx.question.findMany({
+          where: { surveyId: input.surveyId },
+          select: { id: true },
+        });
+        for (let i = 0; i < existing.length; i++) {
+          await tx.question.update({
+            where: { id: existing[i]!.id },
+            data: { position: -(i + 1) },
+          });
+        }
+
+        // Upsert each question with the correct position
+        const results = [];
+        for (const q of input.questions) {
+          const data = {
+            text: q.text,
+            questionType: q.questionType,
+            position: q.position,
+            required: q.required,
+            options: q.options,
+            minRating: q.minRating,
+            maxRating: q.maxRating,
+            maxLength: q.maxLength,
+          };
+          const result = await tx.question.upsert({
+            where: { id: q.questionId },
+            update: data,
+            create: { id: q.questionId, surveyId: input.surveyId, ...data },
+          });
+          results.push(result);
+        }
+
+        // Delete questions that are in the DB but not in the input (removed by user)
+        const inputIds = input.questions.map((q) => q.questionId);
+        await tx.question.deleteMany({
+          where: {
+            surveyId: input.surveyId,
+            id: { notIn: inputIds },
+          },
+        });
+
+        return results;
+      });
     }),
 
   reorder: protectedProcedure

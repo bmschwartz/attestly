@@ -47,28 +47,38 @@ function toStepperStep(
 }
 
 export function WizardShell({
-  steps,
+  steps: rawSteps,
   initialStepId,
   onStepChange,
 }: WizardShellProps) {
   const [currentStepId, setCurrentStepId] = useState(initialStepId);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [visitedSteps, setVisitedSteps] = useState<Set<string>>(
+    () => new Set([initialStepId]),
+  );
+
+  // Suppress errors on steps the user hasn't visited yet
+  const steps = rawSteps.map((s) => ({
+    ...s,
+    hasErrors: visitedSteps.has(s.id) ? s.hasErrors : false,
+  }));
 
   const navigateTo = useCallback(
     async (toStepId: string) => {
       if (toStepId === currentStepId) return;
-      const target = steps.find((s) => s.id === toStepId);
+      const target = rawSteps.find((s) => s.id === toStepId);
       if (!target?.enabled) return;
 
       setIsNavigating(true);
       try {
         await onStepChange?.(currentStepId, toStepId);
       } finally {
+        setVisitedSteps((prev) => new Set(prev).add(toStepId));
         setCurrentStepId(toStepId);
         setIsNavigating(false);
       }
     },
-    [currentStepId, steps, onStepChange],
+    [currentStepId, rawSteps, onStepChange],
   );
 
   const currentIndex = steps.findIndex((s) => s.id === currentStepId);
