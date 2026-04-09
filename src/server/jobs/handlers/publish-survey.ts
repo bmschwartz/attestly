@@ -159,10 +159,26 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
     `publishSurvey for survey ${surveyId} (hash: ${surveyHash.slice(0, 10)}...)`,
   );
 
-  // 6. Get block timestamp (receipt does not include timestamp)
-  const block = await getPublicClient().getBlock({
-    blockNumber: receipt.blockNumber,
-  });
+  // 6. Get block timestamp (receipt does not include timestamp).
+  // Retry with delay — free RPCs sometimes lag behind on block indexing.
+  let blockTimestamp: Date = new Date();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const block = await getPublicClient().getBlock({
+        blockNumber: receipt.blockNumber,
+      });
+      blockTimestamp = new Date(Number(block.timestamp) * 1000);
+      break;
+    } catch {
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 2000));
+      } else {
+        console.warn(
+          `[PublishSurvey] Could not fetch block ${receipt.blockNumber} after 3 attempts. Using server time.`,
+        );
+      }
+    }
+  }
 
   // Update Survey record with tx hash and block metadata
   await db.survey.update({
@@ -173,7 +189,7 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
       status: "PUBLISHED",
       publishTxHash: txHash,
       publishBlockNumber: receipt.blockNumber.toString(),
-      publishBlockTimestamp: new Date(Number(block.timestamp) * 1000),
+      publishBlockTimestamp: blockTimestamp,
       publishedAt: new Date(),
       verificationStatus: "VERIFIED",
     },

@@ -62,20 +62,35 @@ export async function handleCloseSurvey(job: BackgroundJob): Promise<void> {
     `closeSurvey for survey ${surveyId} (hash: ${surveyHash.slice(0, 10)}...)`,
   );
 
-  // 4. Get block timestamp (receipt does not include timestamp)
-  const block = await getPublicClient().getBlock({
-    blockNumber: receipt.blockNumber,
-  });
+  // 4. Get block timestamp with retry (free RPCs may lag on block indexing)
+  let blockTimestamp: Date = new Date();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const block = await getPublicClient().getBlock({
+        blockNumber: receipt.blockNumber,
+      });
+      blockTimestamp = new Date(Number(block.timestamp) * 1000);
+      break;
+    } catch {
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 2000));
+      } else {
+        console.warn(
+          `[CloseSurvey] Could not fetch block ${receipt.blockNumber} after 3 attempts. Using server time.`,
+        );
+      }
+    }
+  }
 
   // Update Survey record with tx hash, block metadata, and final status
   await db.survey.update({
     where: { id: surveyId },
     data: {
       status: "CLOSED",
-      closedAt: new Date(Number(block.timestamp) * 1000),
+      closedAt: blockTimestamp,
       closeTxHash: txHash,
       closeBlockNumber: receipt.blockNumber.toString(),
-      closeBlockTimestamp: new Date(Number(block.timestamp) * 1000),
+      closeBlockTimestamp: blockTimestamp,
     },
   });
 

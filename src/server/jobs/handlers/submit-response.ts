@@ -147,10 +147,25 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
     `submitResponse for response ${responseId} (survey: ${surveyHash.slice(0, 10)}...)`,
   );
 
-  // 7. Get block timestamp (receipt does not include timestamp)
-  const block = await getPublicClient().getBlock({
-    blockNumber: receipt.blockNumber,
-  });
+  // 7. Get block timestamp with retry (free RPCs may lag on block indexing)
+  let blockTimestamp: Date = new Date();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const block = await getPublicClient().getBlock({
+        blockNumber: receipt.blockNumber,
+      });
+      blockTimestamp = new Date(Number(block.timestamp) * 1000);
+      break;
+    } catch {
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 2000));
+      } else {
+        console.warn(
+          `[SubmitResponse] Could not fetch block ${receipt.blockNumber} after 3 attempts. Using server time.`,
+        );
+      }
+    }
+  }
 
   // Update Response record with tx hash and block metadata
   await db.response.update({
@@ -159,10 +174,10 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
       blindedId,
       ipfsCid,
       status: "SUBMITTED",
-      submittedAt: new Date(),
+      submittedAt: blockTimestamp,
       submitTxHash: txHash,
       submitBlockNumber: receipt.blockNumber.toString(),
-      submitBlockTimestamp: new Date(Number(block.timestamp) * 1000),
+      submitBlockTimestamp: blockTimestamp,
       verificationStatus: "VERIFIED",
     },
   });

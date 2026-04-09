@@ -7,14 +7,15 @@ function getClient(): PinataSDK {
   if (!client) {
     const jwt = process.env.PINATA_JWT;
     const gateway = process.env.PINATA_GATEWAY_URL;
-    if (!jwt || !gateway) {
+    if (!jwt) {
       throw new Error(
-        "PINATA_JWT and PINATA_GATEWAY_URL must be set to use IPFS features",
+        "PINATA_JWT must be set to use IPFS features. " +
+        `Current value: jwt=${!!jwt}, gateway=${!!gateway}`,
       );
     }
     client = new PinataSDK({
       pinataJwt: jwt,
-      pinataGateway: gateway,
+      ...(gateway ? { pinataGateway: gateway } : {}),
     });
   }
   return client;

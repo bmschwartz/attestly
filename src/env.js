@@ -17,7 +17,7 @@ export const env = createEnv({
     CLOUDFLARE_R2_PUBLIC_BASE_URL: z.string().url().optional(),
     GEMINI_API_KEY: z.string().min(1).optional(),
     PINATA_JWT: z.string().min(1).optional(),
-    PINATA_GATEWAY_URL: z.string().url().optional(),
+    PINATA_GATEWAY_URL: z.string().min(1).optional(),
     BASE_RPC_URL: z.string().url().optional(),
     RELAYER_PRIVATE_KEY: z.string().min(1).optional(),
     ATTESTLY_CONTRACT_ADDRESS: z
