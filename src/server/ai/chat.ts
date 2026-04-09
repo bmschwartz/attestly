@@ -88,7 +88,10 @@ ${context}`;
 
   const chat = chatModel.startChat({
     history,
-    systemInstruction: systemPrompt,
+    systemInstruction: {
+      role: "user" as const,
+      parts: [{ text: systemPrompt }],
+    },
   });
 
   const result = await chat.sendMessage(newMessage);
