@@ -20,6 +20,22 @@ export function getAttestlyDomain(): TypedDataDomain {
   };
 }
 
+/**
+ * Assert that the contract address is properly configured.
+ * Call before any EIP-712 signing or verification operation.
+ */
+export function assertDomainConfigured(): void {
+  const addr =
+    typeof process !== "undefined"
+      ? process.env.NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS
+      : undefined;
+  if (!addr || addr === "0x0000000000000000000000000000000000000000") {
+    throw new Error(
+      "NEXT_PUBLIC_ATTESTLY_CONTRACT_ADDRESS is not configured. Cannot sign or verify EIP-712 data.",
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Typed data builder functions (for signTypedData / verifyTypedData)
 // ---------------------------------------------------------------------------

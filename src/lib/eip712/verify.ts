@@ -1,6 +1,6 @@
 import { verifyTypedData, recoverTypedDataAddress } from "viem";
 
-import { getAttestlyDomain } from "./domain";
+import { getAttestlyDomain, assertDomainConfigured } from "./domain";
 import {
   publishSurveyTypes,
   submitResponseTypes,
@@ -16,6 +16,7 @@ export async function recoverSurveySigner(
   message: PublishSurveySigningMessage,
   signature: `0x${string}`,
 ): Promise<`0x${string}`> {
+  assertDomainConfigured();
   return recoverTypedDataAddress({
     domain: getAttestlyDomain(),
     types: publishSurveyTypes,
@@ -29,6 +30,7 @@ export async function recoverResponseSigner(
   message: SubmitResponseSigningMessage,
   signature: `0x${string}`,
 ): Promise<`0x${string}`> {
+  assertDomainConfigured();
   return recoverTypedDataAddress({
     domain: getAttestlyDomain(),
     types: submitResponseTypes,

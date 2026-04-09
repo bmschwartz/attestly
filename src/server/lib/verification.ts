@@ -9,7 +9,7 @@ import type { PrismaClient } from "../../../generated/prisma";
  * Uses NEXT_PUBLIC_CHAIN_ID to determine mainnet vs Sepolia.
  */
 export function getBasescanUrl(txHash: string): string {
-  const chainId = process.env.NEXT_PUBLIC_CHAIN_ID;
+  const chainId = process.env.NEXT_PUBLIC_CHAIN_ID ?? "8453";
   const baseUrl =
     chainId === "8453"
       ? "https://basescan.org"

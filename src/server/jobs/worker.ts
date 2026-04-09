@@ -10,7 +10,55 @@ import {
 } from "./queue";
 import { db } from "./db";
 import { getHandler } from "./handlers";
+import {
+  PermanentTransactionError,
+  GasCeilingExceededError,
+} from "~/server/blockchain/relayer";
 import type { JobType } from "../../../generated/prisma";
+
+/**
+ * Revert the parent entity to its pre-transition state when a blockchain
+ * job permanently fails (retries exhausted or permanent error).
+ */
+async function revertGatingState(
+  jobType: string,
+  surveyId: string | null,
+  responseId: string | null,
+): Promise<void> {
+  try {
+    switch (jobType) {
+      case "PUBLISH_SURVEY":
+        if (surveyId) {
+          await db.survey.update({
+            where: { id: surveyId },
+            data: { status: "DRAFT" },
+          });
+          console.log(`[Worker] Reverted survey ${surveyId} to DRAFT`);
+        }
+        break;
+      case "SUBMIT_RESPONSE":
+        if (responseId) {
+          await db.response.update({
+            where: { id: responseId },
+            data: { status: "IN_PROGRESS" },
+          });
+          console.log(`[Worker] Reverted response ${responseId} to IN_PROGRESS`);
+        }
+        break;
+      case "CLOSE_SURVEY":
+        if (surveyId) {
+          await db.survey.update({
+            where: { id: surveyId },
+            data: { status: "PUBLISHED" },
+          });
+          console.log(`[Worker] Reverted survey ${surveyId} to PUBLISHED`);
+        }
+        break;
+    }
+  } catch (err) {
+    console.error(`[Worker] Failed to revert gating state for ${jobType}:`, err);
+  }
+}
 
 /** Default poll interval in milliseconds */
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
@@ -111,7 +159,27 @@ export function startWorker(options: WorkerOptions = {}): {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         console.error(`[Worker] Job ${job.id} failed: ${errorMessage}`);
-        await failJob(job.id, errorMessage);
+
+        if (error instanceof PermanentTransactionError) {
+          // Permanent failure — mark FAILED directly, don't burn retries
+          await db.backgroundJob.update({
+            where: { id: job.id },
+            data: {
+              status: "FAILED",
+              error: errorMessage,
+            },
+          });
+          await revertGatingState(job.type, job.surveyId, job.responseId);
+        } else if (error instanceof GasCeilingExceededError) {
+          // Gas spike — release with 60s delay, don't burn retry
+          await releaseJob(job.id, 60_000);
+        } else {
+          const updatedJob = await failJob(job.id, errorMessage);
+          // If failJob transitioned to FAILED (retries exhausted), revert gating state
+          if (updatedJob.status === "FAILED") {
+            await revertGatingState(job.type, job.surveyId, job.responseId);
+          }
+        }
       }
 
       return true;

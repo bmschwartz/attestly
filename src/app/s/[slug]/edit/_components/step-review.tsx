@@ -7,17 +7,12 @@ import { api } from "~/trpc/react";
 import { hashSurvey, buildSurveyMessage } from "~/lib/eip712/hash";
 import { signSurvey } from "~/lib/eip712/sign";
 import { buildPublishSurveyTypedData } from "~/lib/eip712/domain";
-import type { SurveyQuestion as EIP712SurveyQuestion } from "~/lib/eip712/types";
+import {
+  QUESTION_TYPE_INDEX,
+  type SurveyQuestion as EIP712SurveyQuestion,
+} from "~/lib/eip712/types";
 import type { SurveyState } from "~/app/surveys/[id]/edit/_hooks/useSurveyBuilder";
 import type { QuestionDraft, ValidationError } from "~/app/surveys/[id]/edit/_lib/validation";
-
-/** Map question type string to uint8 for EIP-712 hashing. */
-const QUESTION_TYPE_INDEX: Record<string, number> = {
-  SINGLE_SELECT: 0,
-  MULTIPLE_CHOICE: 1,
-  RATING: 2,
-  FREE_TEXT: 3,
-};
 
 interface StepValidation {
   basics: ValidationError[];

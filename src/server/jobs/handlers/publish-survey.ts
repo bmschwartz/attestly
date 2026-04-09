@@ -1,21 +1,17 @@
 import type { BackgroundJob } from "../../../../generated/prisma";
 import { db } from "~/server/jobs/db";
 import { hashSurvey } from "~/lib/eip712/hash";
-import type { SurveyMessage, SurveyQuestion } from "~/lib/eip712/types";
+import {
+  QUESTION_TYPE_INDEX,
+  type SurveyMessage,
+  type SurveyQuestion,
+} from "~/lib/eip712/types";
 import { pinSurvey } from "~/lib/ipfs/pin-survey";
 import { publishSurveyOnChain } from "~/server/blockchain/contract";
 import { getPublicClient } from "~/server/blockchain/provider";
 import { attestlyAbi } from "~/server/blockchain/abi";
 import { relayAndConfirm } from "~/server/blockchain/relayer";
 import type { Hex } from "viem";
-
-/** Map Prisma QuestionType enum string to uint8 for EIP-712 hashing. */
-const QUESTION_TYPE_INDEX: Record<string, number> = {
-  SINGLE_SELECT: 0,
-  MULTIPLE_CHOICE: 1,
-  RATING: 2,
-  FREE_TEXT: 3,
-};
 
 /**
  * Job payload for PUBLISH_SURVEY.
@@ -94,10 +90,10 @@ export async function handlePublishSurvey(job: BackgroundJob): Promise<void> {
   });
 
   // 3. Pin survey JSON to IPFS
-  // IPFS schema uses string questionType (Prisma enum) while EIP-712 uses numeric
+  // IPFS schema uses numeric questionType (matching EIP-712's uint8)
   const ipfsQuestions = survey.questions.map((q) => ({
     text: q.text,
-    questionType: q.questionType,
+    questionType: QUESTION_TYPE_INDEX[q.questionType] ?? 0,
     position: q.position,
     required: q.required,
     options: q.options as string[],

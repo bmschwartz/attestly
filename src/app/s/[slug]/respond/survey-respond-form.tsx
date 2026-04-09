@@ -12,15 +12,7 @@ import { useRouter } from "next/navigation";
 import { hashAnswers } from "~/lib/eip712/hash";
 import { computeBlindedId } from "~/lib/eip712/blinded-id";
 import { signSurveyResponse } from "~/lib/eip712/sign";
-import type { ResponseAnswer } from "~/lib/eip712/types";
-
-/** Map question type string to uint8 for EIP-712 hashing. */
-const QUESTION_TYPE_INDEX: Record<string, number> = {
-  SINGLE_SELECT: 0,
-  MULTIPLE_CHOICE: 1,
-  RATING: 2,
-  FREE_TEXT: 3,
-};
+import { QUESTION_TYPE_INDEX, type ResponseAnswer } from "~/lib/eip712/types";
 
 interface Question {
   id: string;

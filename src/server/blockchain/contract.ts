@@ -1,13 +1,6 @@
-import { type Chain, type Hex } from "viem";
-import { base, baseSepolia } from "viem/chains";
-import { getPublicClient, getWalletClient } from "./provider";
+import { type Hex } from "viem";
+import { getPublicClient, getWalletClient, getChain } from "./provider";
 import { attestlyAbi } from "./abi";
-
-// Re-derive chain for writeContract calls (viem requires it when WalletClient type is generic)
-function getChain(): Chain {
-  const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "8453");
-  return chainId === 84532 ? baseSepolia : base;
-}
 
 /**
  * Get the configured Attestly contract address.

@@ -13,7 +13,7 @@ import { base, baseSepolia } from "viem/chains";
  * Get the configured chain based on NEXT_PUBLIC_CHAIN_ID.
  * Defaults to Base mainnet (8453).
  */
-function getChain(): Chain {
+export function getChain(): Chain {
   const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "8453");
   return chainId === 84532 ? baseSepolia : base;
 }

@@ -3,7 +3,7 @@
 import { createWalletClient, custom, type EIP1193Provider } from "viem";
 import { base } from "viem/chains";
 
-import { getAttestlyDomain } from "./domain";
+import { getAttestlyDomain, assertDomainConfigured } from "./domain";
 import {
   publishSurveyTypes,
   submitResponseTypes,
@@ -48,6 +48,7 @@ export async function signSurvey(
   account: `0x${string}`,
   message: PublishSurveySigningMessage,
 ): Promise<`0x${string}`> {
+  assertDomainConfigured();
   const client = createPrivyWalletClient(provider);
   return client.signTypedData({
     account,
@@ -63,6 +64,7 @@ export async function signSurveyResponse(
   account: `0x${string}`,
   message: SubmitResponseSigningMessage,
 ): Promise<`0x${string}`> {
+  assertDomainConfigured();
   const client = createPrivyWalletClient(provider);
   return client.signTypedData({
     account,
@@ -78,6 +80,7 @@ export async function signCloseSurvey(
   account: `0x${string}`,
   message: CloseSurveyMessage,
 ): Promise<`0x${string}`> {
+  assertDomainConfigured();
   const client = createPrivyWalletClient(provider);
   return client.signTypedData({
     account,

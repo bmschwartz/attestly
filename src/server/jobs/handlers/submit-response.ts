@@ -2,21 +2,13 @@ import type { BackgroundJob } from "../../../../generated/prisma";
 import { db } from "~/server/jobs/db";
 import { computeBlindedId } from "~/lib/eip712/blinded-id";
 import { hashAnswers } from "~/lib/eip712/hash";
-import type { ResponseAnswer } from "~/lib/eip712/types";
+import { QUESTION_TYPE_INDEX, type ResponseAnswer } from "~/lib/eip712/types";
 import { pinResponse } from "~/lib/ipfs/pin-response";
 import { submitResponseOnChain } from "~/server/blockchain/contract";
 import { getPublicClient } from "~/server/blockchain/provider";
 import { attestlyAbi } from "~/server/blockchain/abi";
 import { relayAndConfirm } from "~/server/blockchain/relayer";
 import type { Hex } from "viem";
-
-/** Map Prisma QuestionType enum string to uint8 for EIP-712 hashing. */
-const QUESTION_TYPE_INDEX: Record<string, number> = {
-  SINGLE_SELECT: 0,
-  MULTIPLE_CHOICE: 1,
-  RATING: 2,
-  FREE_TEXT: 3,
-};
 
 /**
  * Job payload for SUBMIT_RESPONSE.
@@ -99,10 +91,10 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
   });
 
   // 4. Pin response JSON to IPFS
-  // IPFS schema uses string questionType (Prisma enum)
+  // IPFS schema uses numeric questionType (matching EIP-712's uint8)
   const ipfsAnswers = response.answers.map((a) => ({
     questionIndex: a.question.position,
-    questionType: a.question.questionType,
+    questionType: QUESTION_TYPE_INDEX[a.question.questionType] ?? 0,
     value: a.value,
   }));
 
@@ -165,6 +157,7 @@ export async function handleSubmitResponse(job: BackgroundJob): Promise<void> {
       blindedId,
       ipfsCid,
       status: "SUBMITTED",
+      submittedAt: new Date(),
       submitTxHash: txHash,
       submitBlockNumber: receipt.blockNumber.toString(),
       submitBlockTimestamp: new Date(Number(block.timestamp) * 1000),

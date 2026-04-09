@@ -9,19 +9,14 @@ import {
 } from "~/server/api/trpc";
 import { canCreateSurvey } from "~/lib/premium";
 import { hashSurvey, buildSurveyMessage } from "~/lib/eip712/hash";
-import type { SurveyQuestion as EIP712SurveyQuestion } from "~/lib/eip712/types";
+import {
+  QUESTION_TYPE_INDEX,
+  type SurveyQuestion as EIP712SurveyQuestion,
+} from "~/lib/eip712/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Map Prisma QuestionType enum string to uint8 for EIP-712 hashing. */
-const QUESTION_TYPE_INDEX: Record<string, number> = {
-  SINGLE_SELECT: 0,
-  MULTIPLE_CHOICE: 1,
-  RATING: 2,
-  FREE_TEXT: 3,
-};
 
 function slugify(text: string): string {
   return text
@@ -229,8 +224,9 @@ export const surveyRouter = createTRPCRouter({
       if (survey.status === "DRAFT") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
-      // PUBLISHING surveys are only visible to the creator
-      if (survey.status === "PUBLISHING" && survey.creator.id !== ctx.userId) {
+      // PUBLISHING surveys are not visible via this public endpoint.
+      // The creator can see their PUBLISHING surveys via the dashboard.
+      if (survey.status === "PUBLISHING") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
 
@@ -486,6 +482,7 @@ export const surveyRouter = createTRPCRouter({
             payload: {
               surveyId: survey.id,
               signature: input.signature,
+              contentHash: serverHash,
             },
           },
         });
@@ -593,28 +590,34 @@ export const surveyRouter = createTRPCRouter({
       signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "Must be a valid EIP-712 signature"),
     }))
     .mutation(async ({ ctx, input }) => {
-      const survey = await ctx.db.survey.findUnique({
-        where: { id: input.id },
-        select: { id: true, creatorId: true, status: true },
-      });
-
-      if (!survey) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
-      }
-      if (survey.creatorId !== ctx.userId) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Not the survey owner",
-        });
-      }
-      if (survey.status !== "PUBLISHED") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Only PUBLISHED surveys can be closed",
-        });
-      }
-
       return ctx.db.$transaction(async (tx) => {
+        const survey = await tx.survey.findUnique({
+          where: { id: input.id },
+          select: { id: true, creatorId: true, status: true, contentHash: true },
+        });
+
+        if (!survey) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+        }
+        if (survey.creatorId !== ctx.userId) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Not the survey owner",
+          });
+        }
+        if (survey.status !== "PUBLISHED") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Only PUBLISHED surveys can be closed",
+          });
+        }
+        if (!survey.contentHash) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Survey was not published on-chain (missing contentHash)",
+          });
+        }
+
         // Transition to CLOSING (handler sets CLOSED on success)
         const closing = await tx.survey.update({
           where: { id: input.id },
@@ -629,6 +632,7 @@ export const surveyRouter = createTRPCRouter({
             payload: {
               surveyId: survey.id,
               signature: input.signature,
+              contentHash: survey.contentHash,
             },
           },
         });

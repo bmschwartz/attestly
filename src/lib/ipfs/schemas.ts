@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const ipfsSurveyQuestionSchema = z.object({
   text: z.string().min(1),
-  questionType: z.string().min(1),
+  questionType: z.number().int().min(0).max(255),
   position: z.number().int().min(0).max(255),
   required: z.boolean(),
   options: z.array(z.string()).optional(),
@@ -31,8 +31,8 @@ export type IpfsSurveyJSON = z.infer<typeof ipfsSurveySchema>;
 
 export const ipfsResponseAnswerSchema = z.object({
   questionIndex: z.number().int().min(0).max(255),
-  questionType: z.string().min(1),
-  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+  questionType: z.number().int().min(0).max(255),
+  value: z.string(),
 });
 
 export const ipfsResponseSchema = z.object({

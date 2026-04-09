@@ -156,6 +156,7 @@ export const responseRouter = createTRPCRouter({
             payload: {
               responseId: response.id,
               signature: input.signature,
+              contentHash: response.survey.contentHash,
             },
           },
         });
@@ -213,7 +214,7 @@ export const responseRouter = createTRPCRouter({
         where: {
           surveyId: survey.id,
           respondentId: userId,
-          status: "SUBMITTED",
+          status: { in: ["SUBMITTED", "SUBMITTING"] },
           deletedAt: null,
         },
         select: {
@@ -223,6 +224,7 @@ export const responseRouter = createTRPCRouter({
           ipfsCid: true,
           submitTxHash: true,
           verificationStatus: true,
+          status: true,
         },
       });
 
