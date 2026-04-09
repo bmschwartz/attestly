@@ -6,6 +6,7 @@ import {
   createTRPCRouter,
   protectedProcedure,
   publicProcedure,
+  optionalAuthProcedure,
 } from "~/server/api/trpc";
 import { canCreateSurvey } from "~/lib/premium";
 import { hashSurvey, buildSurveyMessage } from "~/lib/eip712/hash";
@@ -194,7 +195,7 @@ export const surveyRouter = createTRPCRouter({
   /**
    * 4. getBySlug — public read of a published survey by slug.
    */
-  getBySlug: publicProcedure
+  getBySlug: optionalAuthProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {
       const survey = await ctx.db.survey.findUnique({
@@ -224,9 +225,12 @@ export const surveyRouter = createTRPCRouter({
       if (survey.status === "DRAFT") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
-      // PUBLISHING surveys are not visible via this public endpoint.
-      // The creator can see their PUBLISHING surveys via the dashboard.
-      if (survey.status === "PUBLISHING") {
+      // PUBLISHING surveys are only visible to their creator.
+      // Non-creators (and unauthenticated users) get 404.
+      if (
+        survey.status === "PUBLISHING" &&
+        survey.creator.id !== ctx.userId
+      ) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
       }
 

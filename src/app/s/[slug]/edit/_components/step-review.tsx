@@ -166,8 +166,12 @@ export function StepReview({
   const walletAddress = user?.wallet?.address;
   const walletReady = !!walletAddress;
 
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const publishMutation = api.survey.publish.useMutation({
     onSuccess: () => {
+      // Survey is now in PUBLISHING state — redirect to the survey page.
+      // The creator can see it (with a "Publishing to blockchain..." status).
+      setIsRedirecting(true);
       router.push(`/s/${survey.slug}`);
     },
   });
@@ -368,11 +372,15 @@ export function StepReview({
         )}
 
         {/* Publishing overlay */}
-        {(publishMutation.isPending || isSigning) && (
+        {(publishMutation.isPending || isSigning || isRedirecting) && (
           <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/70">
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-              {isSigning ? "Waiting for signature..." : "Publishing..."}
+              {isSigning
+                ? "Waiting for signature..."
+                : isRedirecting
+                  ? "Redirecting to dashboard..."
+                  : "Publishing to blockchain..."}
             </div>
           </div>
         )}

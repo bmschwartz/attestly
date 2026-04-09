@@ -186,9 +186,47 @@ const authMiddleware = t.middleware(async ({ ctx, next }) => {
 });
 
 /**
+ * Optional auth middleware — tries to authenticate but does NOT fail if
+ * there is no token. Populates `ctx.userId` when authenticated, leaves
+ * it as null otherwise. Used by public endpoints that behave differently
+ * for authenticated users (e.g., showing PUBLISHING surveys to their creator).
+ */
+const optionalAuthMiddleware = t.middleware(async ({ ctx, next }) => {
+  const authHeader = ctx.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return next(); // No token — proceed as unauthenticated
+  }
+
+  try {
+    const token = authHeader.slice(7);
+    const claims = await privy.verifyAuthToken(token);
+    const user = await ctx.db.user.findUnique({
+      where: { privyId: claims.userId },
+      select: { id: true, walletAddress: true },
+    });
+    if (user) {
+      return next({
+        ctx: { ...ctx, userId: user.id, walletAddress: user.walletAddress },
+      });
+    }
+  } catch {
+    // Token invalid or expired — proceed as unauthenticated
+  }
+  return next();
+});
+
+/**
  * Public (unauthenticated) procedure.
  */
 export const publicProcedure = t.procedure.use(timingMiddleware);
+
+/**
+ * Public procedure with optional authentication.
+ * `ctx.userId` is populated if the caller is authenticated, null otherwise.
+ */
+export const optionalAuthProcedure = t.procedure
+  .use(timingMiddleware)
+  .use(optionalAuthMiddleware);
 
 /**
  * Protected (authenticated) procedure.
