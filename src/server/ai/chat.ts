@@ -7,7 +7,9 @@ if (!env.GEMINI_API_KEY) {
 }
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-const chatModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+const chatModel = genAI.getGenerativeModel({
+  model: "gemini-3.1-flash-lite-preview",
+});
 
 interface SurveyData {
   title: string;
@@ -28,11 +30,22 @@ function buildContext(surveys: SurveyData[]): string {
         };
 
         if (q.questionType === "RATING") {
-          const nums = answers.map((a) => parseFloat(a.value)).filter((n: number) => !isNaN(n));
-          summary.average = nums.length > 0 ? (nums.reduce((a: number, b: number) => a + b, 0) / nums.length).toFixed(1) : 0;
+          const nums = answers
+            .map((a) => parseFloat(a.value))
+            .filter((n: number) => !isNaN(n));
+          summary.average =
+            nums.length > 0
+              ? (
+                  nums.reduce((a: number, b: number) => a + b, 0) / nums.length
+                ).toFixed(1)
+              : 0;
         }
 
-        if (q.questionType === "SINGLE_SELECT" || q.questionType === "MULTIPLE_CHOICE" || q.questionType === "RATING") {
+        if (
+          q.questionType === "SINGLE_SELECT" ||
+          q.questionType === "MULTIPLE_CHOICE" ||
+          q.questionType === "RATING"
+        ) {
           const dist: Record<string, number> = {};
           for (const a of answers) {
             dist[a.value] = (dist[a.value] ?? 0) + 1;
@@ -69,7 +82,7 @@ export async function chatWithData(
 ${context}`;
 
   const history = messages.map((m) => ({
-    role: m.role === "user" ? "user" as const : "model" as const,
+    role: m.role === "user" ? ("user" as const) : ("model" as const),
     parts: [{ text: m.content }],
   }));
 

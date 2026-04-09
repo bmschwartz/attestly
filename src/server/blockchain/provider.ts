@@ -35,9 +35,12 @@ let _walletClient: WalletClient | null = null;
 export function getPublicClient(): PublicClient {
   if (_publicClient) return _publicClient;
 
+  const rpcUrl = getRpcUrl();
+  console.log(`[Provider] Creating public client with RPC: ${rpcUrl}, chain: ${getChain().name}`);
+
   _publicClient = createPublicClient({
     chain: getChain(),
-    transport: http(getRpcUrl()),
+    transport: http(rpcUrl),
   });
 
   return _publicClient;
