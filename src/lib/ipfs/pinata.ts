@@ -37,12 +37,23 @@ export async function pinJSON(
 
 /**
  * Pin a Blob (raw bytes) to IPFS. Returns the CID string.
+ * @param blob The data to pin
+ * @param name Filename for the upload
+ * @param groupId Optional Pinata group ID for organizing pins
  */
-export async function pinBlob(blob: Blob, name?: string): Promise<string> {
+export async function pinBlob(
+  blob: Blob,
+  name?: string,
+  groupId?: string,
+): Promise<string> {
   const sdk = getClient();
   const file = new File([blob], name ?? "data.bin", { type: blob.type });
-  const upload = await sdk.upload.public.file(file);
-  return upload.cid;
+  let upload = sdk.upload.public.file(file);
+  if (groupId) {
+    upload = upload.group(groupId);
+  }
+  const result = await upload;
+  return result.cid;
 }
 
 /**

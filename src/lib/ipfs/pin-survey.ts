@@ -34,5 +34,6 @@ export async function pinSurvey(
   }
   const bytes = new TextEncoder().encode(canonical);
   const blob = new Blob([bytes], { type: "application/json" });
-  return pinBlob(blob, `survey-${surveyHash}.json`);
+  const groupId = process.env.PINATA_GROUP_SURVEYS;
+  return pinBlob(blob, `survey-${surveyHash}.json`, groupId);
 }

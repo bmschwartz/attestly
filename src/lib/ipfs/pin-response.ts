@@ -31,7 +31,8 @@ export async function pinResponse(input: PinResponseInput): Promise<string> {
   }
   const bytes = new TextEncoder().encode(canonical);
   const blob = new Blob([bytes], { type: "application/json" });
-  return pinBlob(blob, `response-${json.surveyHash}.json`);
+  const groupId = process.env.PINATA_GROUP_RESPONSES;
+  return pinBlob(blob, `response-${json.surveyHash}.json`, groupId);
 }
 
 /**
@@ -45,5 +46,6 @@ export async function pinEncryptedResponse(
   const blob = new Blob([encryptedData], {
     type: "application/octet-stream",
   });
-  return pinBlob(blob, `enc-response-${surveyHash}-${blindedId}.bin`);
+  const groupId = process.env.PINATA_GROUP_RESPONSES;
+  return pinBlob(blob, `enc-response-${surveyHash}-${blindedId}.bin`, groupId);
 }
