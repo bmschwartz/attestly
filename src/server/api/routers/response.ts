@@ -16,16 +16,26 @@ export const responseRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found or not published" });
       }
 
-      // Check for existing active response
+      // Check for any existing response (active or soft-deleted)
       const existing = await ctx.db.response.findFirst({
         where: {
           surveyId: input.surveyId,
           respondentId: ctx.userId,
-          deletedAt: null,
         },
         include: { answers: true },
       });
       if (existing) {
+        // If soft-deleted, reactivate it
+        if (existing.deletedAt) {
+          return ctx.db.response.update({
+            where: { id: existing.id },
+            data: {
+              deletedAt: null,
+              status: "IN_PROGRESS",
+            },
+            include: { answers: true },
+          });
+        }
         return existing;
       }
 
