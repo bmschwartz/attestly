@@ -230,10 +230,7 @@ export const responseRouter = createTRPCRouter({
       });
 
       if (!response) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "No submitted response found for this survey",
-        });
+        return null;
       }
 
       const user = await ctx.db.user.findUnique({
