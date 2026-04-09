@@ -57,6 +57,7 @@ docs/**/reviews/
 docs/**/REVIEW.md
 
 .claude/reviews/
+.claude/settings.local.json
 
 # git worktrees
 .worktrees/
