@@ -101,14 +101,10 @@ export function startWorker(options: WorkerOptions = {}): {
 
       if (!job) return false;
 
-      // Check if the job is ready for retry (respects per-type backoff)
-      if (!isReadyForRetry(job.retryCount, job.lastAttemptedAt, job.type)) {
-        // Not ready yet — release without burning retry count.
-        // Defer by the remaining backoff window so we don't re-claim immediately.
-        const delay = getRetryDelay(job.retryCount, job.type);
-        await releaseJob(job.id, delay);
-        return false;
-      }
+      // Note: Backoff is now handled by nextAttemptAt in claimNextJob's WHERE clause.
+      // When failJob sets a job back to PENDING, we set nextAttemptAt to enforce the
+      // backoff delay. claimNextJob skips jobs where nextAttemptAt > now.
+      // No need for a separate isReadyForRetry check here.
 
       // Check if job dependencies are met (e.g. SUBMIT_RESPONSE waits for PUBLISH_SURVEY)
       let depsMet: boolean;

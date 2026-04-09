@@ -130,12 +130,15 @@ export async function failJob(jobId: string, errorMessage: string) {
   }
 
   // Schedule retry — set back to PENDING with incremented retry count
+  // and a nextAttemptAt delay to enforce backoff.
+  const delay = getRetryDelay(nextRetryCount, job.type);
   return db.backgroundJob.update({
     where: { id: jobId },
     data: {
       status: "PENDING",
       error: errorMessage,
       retryCount: nextRetryCount,
+      nextAttemptAt: new Date(Date.now() + delay),
     },
   });
 }
