@@ -10,6 +10,13 @@
 // Load environment variables
 import "dotenv/config";
 
+console.log(
+  "[Worker] ENV check — PINATA_JWT set:",
+  !!process.env.PINATA_JWT,
+  "PINATA_GATEWAY_URL set:",
+  !!process.env.PINATA_GATEWAY_URL,
+);
+
 // Import handlers to register them
 import "./handlers";
 

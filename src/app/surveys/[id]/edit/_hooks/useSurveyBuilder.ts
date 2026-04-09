@@ -127,7 +127,7 @@ export function useSurveyBuilder(initialSurvey: SurveyForEdit) {
         required: false,
         options:
           questionType === "SINGLE_SELECT" || questionType === "MULTIPLE_CHOICE"
-            ? ["", ""]
+            ? ["", "", "", ""]
             : [],
         minRating: questionType === "RATING" ? LIMITS.RATING_DEFAULT_MIN : null,
         maxRating: questionType === "RATING" ? LIMITS.RATING_DEFAULT_MAX : null,

@@ -227,11 +227,11 @@ export const surveyRouter = createTRPCRouter({
       }
       // PUBLISHING surveys are only visible to their creator.
       // Non-creators (and unauthenticated users) get 404.
-      if (
-        survey.status === "PUBLISHING" &&
-        survey.creator.id !== ctx.userId
-      ) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+      if (survey.status === "PUBLISHING") {
+        console.log(`[getBySlug] PUBLISHING survey ${survey.id}: creator=${survey.creator.id}, ctx.userId=${ctx.userId}`);
+        if (survey.creator.id !== ctx.userId) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+        }
       }
 
       // Note: getBySlug intentionally returns all survey data for non-DRAFT surveys,

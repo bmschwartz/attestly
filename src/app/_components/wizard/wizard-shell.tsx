@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { ReactNode } from "react";
 import { WizardStepper } from "./wizard-stepper";
 import type { WizardStep } from "./wizard-stepper";
@@ -20,6 +20,8 @@ interface WizardShellProps {
   initialStepId: string;
   /** Called before navigation — use this to save current step data. */
   onStepChange?: (fromStepId: string, toStepId: string) => Promise<void>;
+  /** External navigation request — when set, the wizard navigates to this step. */
+  goToStepId?: string | null;
 }
 
 function toStepperStep(
@@ -50,6 +52,7 @@ export function WizardShell({
   steps: rawSteps,
   initialStepId,
   onStepChange,
+  goToStepId,
 }: WizardShellProps) {
   const [currentStepId, setCurrentStepId] = useState(initialStepId);
   const [isNavigating, setIsNavigating] = useState(false);
@@ -80,6 +83,13 @@ export function WizardShell({
     },
     [currentStepId, rawSteps, onStepChange],
   );
+
+  // Handle external navigation requests (e.g., "Edit →" buttons on Review step)
+  useEffect(() => {
+    if (goToStepId && goToStepId !== currentStepId) {
+      void navigateTo(goToStepId);
+    }
+  }, [goToStepId, currentStepId, navigateTo]);
 
   const currentIndex = steps.findIndex((s) => s.id === currentStepId);
   const isFirst = currentIndex === 0;

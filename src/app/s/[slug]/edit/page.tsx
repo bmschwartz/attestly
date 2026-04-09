@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { AuthGuard } from "~/app/_components/auth-guard";
 import { WizardShell } from "~/app/_components/wizard/wizard-shell";
@@ -109,9 +109,13 @@ function WizardEditor({
   // Step contents
   // -------------------------------------------------------------------------
 
-  // goToStep helper passed to StepReview
+  // goToStep helper — sets state that WizardShell watches via goToStepId prop.
+  // Uses a counter to ensure each click triggers a new effect even if the
+  // target step is the same as a previous navigation.
+  const [externalGoTo, setExternalGoTo] = useState<{ id: string; key: number } | null>(null);
   const goToStep = useCallback(
     (stepId: string) => {
+      setExternalGoTo((prev) => ({ id: stepId, key: (prev?.key ?? 0) + 1 }));
       router.replace(`?step=${stepId}`, { scroll: false });
     },
     [router],
@@ -210,6 +214,7 @@ function WizardEditor({
       steps={steps}
       initialStepId={initialStepId}
       onStepChange={handleStepChange}
+      goToStepId={externalGoTo?.id ?? null}
     />
   );
 }
