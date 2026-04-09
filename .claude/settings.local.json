@@ -93,7 +93,20 @@
       "Bash(timeout 4 pnpm worker)",
       "Bash(gtimeout 4 pnpm worker)",
       "Bash(ls:*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(python3 -c \"import json,sys; data=sys.stdin.read\\(\\); start=data.find\\('{'\\); result=json.loads\\(data[start:]\\); [print\\(f\\\\\"{t['model']}-{t['instance']}: {t['status']}\\\\\"\\) for t in result['results']]\")",
+      "Bash(find:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "Bash(npx hardhat:*)",
+      "Bash(gtimeout 5 pnpm worker)",
+      "Bash(python3 -c \"import json,sys; obj=json.loads\\(sys.stdin.readline\\(\\)\\); print\\('status:', obj.get\\('type','?'\\)\\)\")",
+      "Bash(python3 -c ':*)",
+      "Bash(python3:*)",
+      "Bash(xxd /Users/bmschwartz/Development/attestly/.claude/reviews/main/20260408-165932-71c2647/review-composer-solidity.md)",
+      "Bash(curl -s -X POST https://sepolia.base.org -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_getCode\",\"params\":[\"0x7a332bc909595e098ef0fe6dc996b37236f41b5e\",\"latest\"],\"id\":1}')",
+      "Bash(curl -s -X POST https://sepolia.base.org -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_getStorageAt\",\"params\":[\"0x7a332bc909595e098ef0fe6dc996b37236f41b5e\",\"0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc\",\"latest\"],\"id\":1}')",
+      "Bash(curl -s -X POST https://sepolia.base.org -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"0x7a332bc909595e098ef0fe6dc996b37236f41b5e\",\"data\":\"0x8da5cb5b\"},\"latest\"],\"id\":1}')",
+      "Bash(curl -s -X POST https://sepolia.base.org -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"0x7a332bc909595e098ef0fe6dc996b37236f41b5e\",\"data\":\"0x84b0196e\"},\"latest\"],\"id\":1}')"
     ]
   }
 }
